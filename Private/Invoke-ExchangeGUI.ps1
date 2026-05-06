@@ -120,6 +120,10 @@
       <Setter Property="IsReadOnly" Value="True"/>
       <Setter Property="SelectionMode" Value="Extended"/>
       <Setter Property="CanUserAddRows" Value="False"/>
+      <Setter Property="CanUserResizeColumns" Value="True"/>
+      <Setter Property="CanUserResizeRows" Value="False"/>
+      <Setter Property="CanUserSortColumns" Value="True"/>
+      <Setter Property="CanUserReorderColumns" Value="False"/>
       <Setter Property="AlternatingRowBackground" Value="#FAF9F8"/>
     </Style>
     <Style TargetType="DataGridColumnHeader">
@@ -127,11 +131,12 @@
       <Setter Property="Foreground" Value="#605E5C"/>
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Height" Value="34"/>
-      <Setter Property="Padding" Value="12,0"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="Padding" Value="12,4"/>
       <Setter Property="BorderBrush" Value="#E1DFDD"/>
       <Setter Property="BorderThickness" Value="0,0,1,1"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Top"/>
     </Style>
     <Style TargetType="DataGridRow">
       <Style.Triggers>
@@ -139,6 +144,10 @@
           <Setter Property="Background" Value="#DEECF9"/>
           <Setter Property="Foreground" Value="#201F1E"/>
         </Trigger>
+        <DataTrigger Binding="{Binding Enabled}" Value="False">
+          <Setter Property="Foreground" Value="#A19F9D"/>
+          <Setter Property="FontStyle" Value="Italic"/>
+        </DataTrigger>
       </Style.Triggers>
     </Style>
   </Window.Resources>
@@ -261,7 +270,15 @@
               <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
           </ItemsControl>
-          <Button x:Name="BtnRefresh" Grid.Column="2" Content="Refresh" Style="{StaticResource ActionBtn}" Margin="0,0,8,0"/>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
+            <Button x:Name="BtnFilterRow" Content="Filter: off" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+                    ToolTip="Toggle a filter input in each column header"/>
+            <Button x:Name="BtnWrap" Content="Wrap: off" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+                    ToolTip="Toggle text wrapping on long cells"/>
+            <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+                    ToolTip="Resize columns to fit current content"/>
+            <Button x:Name="BtnRefresh" Content="Refresh" Style="{StaticResource ActionBtn}"/>
+          </StackPanel>
           <TextBlock x:Name="ItemCount" Grid.Column="3" FontFamily="Consolas" FontSize="11"
                      Foreground="{StaticResource Subdued}" VerticalAlignment="Center" Text="0 items"/>
         </Grid>
@@ -414,7 +431,7 @@
     foreach ($n in @(
             'TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','VersionLabel',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
-            'Crumbs','ViewTitle','ViewDesc','SearchBox','ChipsHost','BtnRefresh','ItemCount',
+            'Crumbs','ViewTitle','ViewDesc','SearchBox','ChipsHost','BtnRefresh','BtnFilterRow','BtnWrap','BtnAutoFit','ItemCount',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder',
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsList','BtnDetailsClose',
             'SelectionCount','ActionsHost',
@@ -542,17 +559,44 @@
     }
 
     # ---------------- View descriptors ----------------
+    # Badge palettes used across views (key match is case-insensitive at apply time).
+    $BadgeOrigin = @{
+        'Built-in' = @{ Bg='#DEF7E0'; Fg='#1B5E20'; Border='#A5D6A7' }
+        'Custom'   = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
+        'Implicit' = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+    }
+    $BadgeAssigneeType = @{
+        'User'           = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
+        'RoleGroup'      = @{ Bg='#FFF3E0'; Fg='#E65100'; Border='#FFCC80' }
+        'SecurityGroup'  = @{ Bg='#F3E5F5'; Fg='#6A1B9A'; Border='#CE93D8' }
+        'RoleAssignmentPolicy' = @{ Bg='#E0F7FA'; Fg='#006064'; Border='#80DEEA' }
+        'Computer'       = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+    }
+    $BadgeScopeType = @{
+        'Recipient'    = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
+        'Server'       = @{ Bg='#FFF3E0'; Fg='#E65100'; Border='#FFCC80' }
+        'Implicit'     = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+        'Custom'       = @{ Bg='#DEF7E0'; Fg='#1B5E20'; Border='#A5D6A7' }
+        'OrganizationConfig' = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+        'MyGAL'        = @{ Bg='#F3E5F5'; Fg='#6A1B9A'; Border='#CE93D8' }
+    }
+    $BadgeRoleType = @{
+        'UnScoped'     = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
+        'Role'         = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+    }
+
     $script:Views = @{
         RoleGroups = @{
             Crumbs = 'RBAC ▸ Role Groups'
             Title  = 'Role Groups'
             Desc   = 'Universal Security Groups that bundle roles, members and scopes.'
             Chips  = @('all','built-in','custom')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Name';        Path='Name';        Width=240 }
-                @{ Header='Description'; Path='Description'; Width='*' }
-                @{ Header='Members';     Path='MemberCount'; Width=90 }
-                @{ Header='Roles';       Path='RoleCount';   Width=80 }
+                @{ Header='Name';        Path='Name';        Width=240; MinWidth=120 }
+                @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
+                @{ Header='Members';     Path='MemberCount'; Width=90;  MinWidth=70; Align='Right'; Format='N0' }
+                @{ Header='Roles';       Path='RoleCount';   Width=80;  MinWidth=60; Align='Right'; Format='N0' }
             )
         }
         Roles = @{
@@ -560,12 +604,13 @@
             Title  = 'Roles'
             Desc   = 'Containers of cmdlets and parameters that grant capabilities.'
             Chips  = @('all','built-in','custom','unassigned')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Role Name';   Path='Name';        Width=240 }
-                @{ Header='Type';        Path='RoleType';    Width=140 }
-                @{ Header='Origin';      Path='Origin';      Width=100 }
-                @{ Header='Parent Role'; Path='Parent';      Width=180 }
-                @{ Header='Description'; Path='Description'; Width='*' }
+                @{ Header='Role Name';   Path='Name';        Width=240; MinWidth=140 }
+                @{ Header='Type';        Path='RoleType';    Width=140; MinWidth=100; Kind='Badge'; BadgeMap=$BadgeRoleType }
+                @{ Header='Origin';      Path='Origin';      Width=100; MinWidth=90;  Kind='Badge'; BadgeMap=$BadgeOrigin }
+                @{ Header='Parent Role'; Path='Parent';      Width=180; MinWidth=120 }
+                @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
             )
         }
         Assignments = @{
@@ -573,13 +618,14 @@
             Title  = 'Role Assignments'
             Desc   = 'Bindings of Role + Assignee + Scope.'
             Chips  = @('all','enabled','disabled')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Assignment Name'; Path='Name';                Width=260 }
-                @{ Header='Role';            Path='Role';                Width=200 }
-                @{ Header='Assignee';        Path='RoleAssignee';        Width=180 }
-                @{ Header='Type';            Path='RoleAssigneeType';    Width=100 }
-                @{ Header='Read Scope';      Path='RecipientReadScope';  Width='*' }
-                @{ Header='Write Scope';     Path='RecipientWriteScope'; Width='*' }
+                @{ Header='Assignment Name'; Path='Name';                Width=260; MinWidth=160 }
+                @{ Header='Role';            Path='Role';                Width=200; MinWidth=140 }
+                @{ Header='Assignee';        Path='RoleAssignee';        Width=180; MinWidth=120 }
+                @{ Header='Type';            Path='RoleAssigneeType';    Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeAssigneeType }
+                @{ Header='Read Scope';      Path='RecipientReadScope';  Width='*'; MinWidth=140 }
+                @{ Header='Write Scope';     Path='RecipientWriteScope'; Width='*'; MinWidth=140 }
             )
         }
         Scopes = @{
@@ -587,11 +633,12 @@
             Title  = 'Scopes'
             Desc   = 'Where a role applies - recipient or server filters.'
             Chips  = @('all','implicit','custom','recipient','server')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Scope Name';       Path='Name';                  Width=220 }
-                @{ Header='Type';             Path='ScopeRestrictionType';  Width=140 }
-                @{ Header='OU';               Path='RecipientRoot';         Width=200 }
-                @{ Header='Recipient Filter'; Path='FilterSummary';         Width='*' }
+                @{ Header='Scope Name';       Path='Name';                  Width=220; MinWidth=140 }
+                @{ Header='Type';             Path='ScopeRestrictionType';  Width=160; MinWidth=130; Kind='Badge'; BadgeMap=$BadgeScopeType }
+                @{ Header='OU';               Path='RecipientRoot';         Width=200; MinWidth=140 }
+                @{ Header='Recipient Filter'; Path='FilterSummary';         Width='*'; MinWidth=160 }
             )
         }
         UserRights = @{
@@ -599,12 +646,13 @@
             Title  = 'User Rights'
             Desc   = 'Effective permissions for a user - what they can run, where.'
             Chips  = @('expand role groups','show scopes')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='User';        Path='User';        Width=240 }
-                @{ Header='Role';        Path='Role';        Width=220 }
-                @{ Header='Granted Via'; Path='Via';         Width=200 }
-                @{ Header='Read Scope';  Path='ReadScope';   Width=180 }
-                @{ Header='Write Scope'; Path='WriteScope';  Width='*' }
+                @{ Header='User';        Path='User';        Width=240; MinWidth=160 }
+                @{ Header='Role';        Path='Role';        Width=220; MinWidth=140 }
+                @{ Header='Granted Via'; Path='Via';         Width=200; MinWidth=140 }
+                @{ Header='Read Scope';  Path='ReadScope';   Width=180; MinWidth=130 }
+                @{ Header='Write Scope'; Path='WriteScope';  Width='*'; MinWidth=130 }
             )
         }
         Commands = @{
@@ -612,11 +660,12 @@
             Title  = 'Command Lookup'
             Desc   = 'Reverse lookup: which roles grant a given cmdlet?'
             Chips  = @('all','built-in','custom')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Role';        Path='RoleName';    Width=240 }
-                @{ Header='Type';        Path='RoleType';    Width=140 }
-                @{ Header='Origin';      Path='Origin';      Width=120 }
-                @{ Header='Description'; Path='Description'; Width='*' }
+                @{ Header='Role';        Path='RoleName';    Width=240; MinWidth=140 }
+                @{ Header='Type';        Path='RoleType';    Width=140; MinWidth=100; Kind='Badge'; BadgeMap=$BadgeRoleType }
+                @{ Header='Origin';      Path='Origin';      Width=120; MinWidth=100; Kind='Badge'; BadgeMap=$BadgeOrigin }
+                @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
             )
         }
         Visualizer = @{
@@ -624,6 +673,7 @@
             Title  = 'RBAC Visualizer · hub-and-spoke'
             Desc   = 'One assignment in the centre, three spokes out: Role · Assignee · Scope.'
             Chips  = @()
+            FrozenColumns = 0
             Columns = @()
         }
         Audit = @{
@@ -631,40 +681,203 @@
             Title  = 'Audit Log'
             Desc   = 'Recent RBAC changes from Search-AdminAuditLog.'
             Chips  = @('last 7 days','last 30 days','last 90 days')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Timestamp';   Path='Timestamp';  Width=160 }
-                @{ Header='Caller';      Path='Caller';     Width=200 }
-                @{ Header='Cmdlet';      Path='Cmdlet';     Width=220 }
-                @{ Header='Object';      Path='Object';     Width=220 }
-                @{ Header='Parameters';  Path='Parameters'; Width='*' }
+                @{ Header='Timestamp';   Path='Timestamp';  Width=170; MinWidth=160 }
+                @{ Header='Caller';      Path='Caller';     Width=200; MinWidth=140 }
+                @{ Header='Cmdlet';      Path='Cmdlet';     Width=220; MinWidth=140 }
+                @{ Header='Object';      Path='Object';     Width=220; MinWidth=140 }
+                @{ Header='Parameters';  Path='Parameters'; Width='*'; MinWidth=200 }
             )
         }
     }
 
     # ---------------- Grid configuration ----------------
+    $script:ColumnFilters    = @{}
+    $script:FilterRowEnabled = $false
+    $script:WrapEnabled      = $false
+
+    function New-Brush {
+        param([string]$Hex)
+        New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Hex))
+    }
+
     function Set-GridColumns {
         param([array]$Columns)
         $UI.MainGrid.Columns.Clear()
+
         foreach ($c in $Columns) {
             $col = [System.Windows.Controls.DataGridTextColumn]::new()
-            $col.Header  = $c.Header
-            $col.Binding = [System.Windows.Data.Binding]::new($c.Path)
+            $col.MinWidth        = if ($c.MinWidth) { [double]$c.MinWidth } else { 60.0 }
+            $col.CanUserResize   = $true
+            $col.CanUserSort     = $true
+            $col.SortMemberPath  = $c.Path
+
+            # ---- Header: label + optional filter TextBox ----
+            $headerPanel = [System.Windows.Controls.StackPanel]::new()
+            $headerPanel.Orientation = [System.Windows.Controls.Orientation]::Vertical
+            $headerLabel = [System.Windows.Controls.TextBlock]::new()
+            $headerLabel.Text       = [string]$c.Header
+            $headerLabel.FontWeight = [System.Windows.FontWeights]::SemiBold
+            $headerLabel.FontSize   = 11
+            $headerLabel.Foreground = (New-Brush '#605E5C')
+            $null = $headerPanel.Children.Add($headerLabel)
+            if ($script:FilterRowEnabled) {
+                $fbox = [System.Windows.Controls.TextBox]::new()
+                $fbox.Margin     = '0,4,0,0'
+                $fbox.MinHeight  = 22
+                $fbox.FontSize   = 11
+                $fbox.FontWeight = [System.Windows.FontWeights]::Normal
+                $fbox.Foreground = (New-Brush '#201F1E')
+                $fbox.ToolTip    = 'Filter (contains)'
+                $fbox.Tag        = $c.Path
+                if ($script:ColumnFilters.ContainsKey($c.Path)) { $fbox.Text = [string]$script:ColumnFilters[$c.Path] }
+                $fbox.Add_TextChanged({
+                    param($s, $e)
+                    $key = [string]$s.Tag
+                    $val = [string]$s.Text
+                    if ([string]::IsNullOrEmpty($val)) {
+                        if ($script:ColumnFilters.ContainsKey($key)) { $null = $script:ColumnFilters.Remove($key) }
+                    }
+                    else { $script:ColumnFilters[$key] = $val }
+                    Apply-Filters
+                })
+                $null = $headerPanel.Children.Add($fbox)
+            }
+            $col.Header = $headerPanel
+
+            # ---- Width ----
             if ($c.Width -eq '*') {
                 $col.Width = [System.Windows.Controls.DataGridLength]::new(1, [System.Windows.Controls.DataGridLengthUnitType]::Star)
             }
             else {
                 $col.Width = [System.Windows.Controls.DataGridLength]::new([double]$c.Width)
             }
-            # Tooltip showing full cell value on hover (so truncated content stays readable)
+
+            # ---- Binding (with optional StringFormat) ----
+            $binding = [System.Windows.Data.Binding]::new($c.Path)
+            if ($c.Format) { $binding.StringFormat = "{0:$($c.Format)}" }
+            $col.Binding = $binding
+
+            # ---- Cell ElementStyle (TextBlock) ----
             $eStyle = [System.Windows.Style]::new([System.Windows.Controls.TextBlock])
+
+            # Wrap vs ellipsis
+            if ($script:WrapEnabled) {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextWrappingProperty,
+                    [System.Windows.TextWrapping]::Wrap))
+            }
+            else {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextTrimmingProperty,
+                    [System.Windows.TextTrimming]::CharacterEllipsis))
+            }
+
+            # Right alignment for numeric columns
+            if ($c.Align -eq 'Right') {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextAlignmentProperty,
+                    [System.Windows.TextAlignment]::Right))
+            }
+
+            # Tooltip with full value (helpful when ellipsis truncates)
             $tt = [System.Windows.Data.Binding]::new($c.Path)
             $eStyle.Setters.Add([System.Windows.Setter]::new(
-                [System.Windows.Controls.TextBlock]::TextTrimmingProperty,
-                [System.Windows.TextTrimming]::CharacterEllipsis))
-            $eStyle.Setters.Add([System.Windows.Setter]::new(
                 [System.Windows.Controls.ToolTipService]::ToolTipProperty, $tt))
+
+            # Empty → em-dash, subdued (DataTrigger on the source value to avoid Text-feedback loops)
+            $emptyDT = [System.Windows.DataTrigger]::new()
+            $emptyDT.Binding = [System.Windows.Data.Binding]::new($c.Path)
+            $emptyDT.Value   = ''
+            $emptyDT.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.Controls.TextBlock]::TextProperty, [string]'-'))
+            $emptyDT.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.Controls.TextBlock]::ForegroundProperty, (New-Brush '#A19F9D')))
+            $eStyle.Triggers.Add($emptyDT)
+
+            # Badge: colorise per known value (also a DataTrigger on the bound source value)
+            if ($c.Kind -eq 'Badge' -and $c.BadgeMap) {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::PaddingProperty,
+                    [System.Windows.Thickness]::new(8, 2, 8, 2)))
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.FrameworkElement]::HorizontalAlignmentProperty,
+                    [System.Windows.HorizontalAlignment]::Left))
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.FrameworkElement]::VerticalAlignmentProperty,
+                    [System.Windows.VerticalAlignment]::Center))
+                foreach ($k in $c.BadgeMap.Keys) {
+                    $palette = $c.BadgeMap[$k]
+                    $bDT = [System.Windows.DataTrigger]::new()
+                    $bDT.Binding = [System.Windows.Data.Binding]::new($c.Path)
+                    $bDT.Value   = [string]$k
+                    $bDT.Setters.Add([System.Windows.Setter]::new(
+                        [System.Windows.Controls.TextBlock]::BackgroundProperty, (New-Brush $palette.Bg)))
+                    $bDT.Setters.Add([System.Windows.Setter]::new(
+                        [System.Windows.Controls.TextBlock]::ForegroundProperty, (New-Brush $palette.Fg)))
+                    $bDT.Setters.Add([System.Windows.Setter]::new(
+                        [System.Windows.Controls.TextBlock]::FontWeightProperty,
+                        [System.Windows.FontWeights]::SemiBold))
+                    $eStyle.Triggers.Add($bDT)
+                }
+            }
+
             $col.ElementStyle = $eStyle
             $null = $UI.MainGrid.Columns.Add($col)
+        }
+
+        # Frozen columns + row height per wrap mode
+        $cv = $script:Views[$script:CurrentView]
+        if ($cv -and $cv.ContainsKey('FrozenColumns')) {
+            $UI.MainGrid.FrozenColumnCount = [int]$cv.FrozenColumns
+        }
+        else {
+            $UI.MainGrid.FrozenColumnCount = 0
+        }
+        if ($script:WrapEnabled) { $UI.MainGrid.RowHeight = [double]::NaN }
+        else                     { $UI.MainGrid.RowHeight = 34.0 }
+    }
+
+    function Auto-FitColumns {
+        if (-not $UI.MainGrid -or -not $UI.MainGrid.Columns) { return }
+        # Pass 1: ask WPF to size each column to its content
+        foreach ($col in $UI.MainGrid.Columns) {
+            try {
+                $col.Width = [System.Windows.Controls.DataGridLength]::new(1, [System.Windows.Controls.DataGridLengthUnitType]::Auto)
+            } catch { }
+        }
+        # Force layout so ActualWidth is up to date, then snap to fixed width so the user can keep dragging
+        $UI.MainGrid.UpdateLayout()
+        foreach ($col in $UI.MainGrid.Columns) {
+            try {
+                $w = $col.ActualWidth
+                if ($w -gt 0) {
+                    $col.Width = [System.Windows.Controls.DataGridLength]::new([double]$w)
+                }
+            } catch { }
+        }
+    }
+
+    function Toggle-FilterRow {
+        $script:FilterRowEnabled = -not $script:FilterRowEnabled
+        $UI.BtnFilterRow.Content = if ($script:FilterRowEnabled) { 'Filter: on' } else { 'Filter: off' }
+        if (-not $script:FilterRowEnabled) {
+            $script:ColumnFilters.Clear()
+        }
+        $cfg = $script:Views[$script:CurrentView]
+        if ($cfg -and $cfg.Columns -and $cfg.Columns.Count -gt 0) {
+            Set-GridColumns -Columns $cfg.Columns
+        }
+        Apply-Filters
+    }
+
+    function Toggle-Wrap {
+        $script:WrapEnabled = -not $script:WrapEnabled
+        $UI.BtnWrap.Content = if ($script:WrapEnabled) { 'Wrap: on' } else { 'Wrap: off' }
+        $cfg = $script:Views[$script:CurrentView]
+        if ($cfg -and $cfg.Columns -and $cfg.Columns.Count -gt 0) {
+            Set-GridColumns -Columns $cfg.Columns
         }
     }
 
@@ -1251,6 +1464,13 @@
         if (-not $src) { return }
 
         $chip = $script:ActiveChip[$view]
+        $colFilters = @{}
+        if ($script:ColumnFilters) {
+            foreach ($k in $script:ColumnFilters.Keys) {
+                $v = "$($script:ColumnFilters[$k])".Trim()
+                if ($v -ne '') { $colFilters[$k] = $v }
+            }
+        }
         $filtered = foreach ($row in $src) {
             if (-not (Test-ChipMatch -Row $row -View $view -Chip $chip)) { continue }
             if ($q -ne '') {
@@ -1261,6 +1481,14 @@
                     if ($v -and $v -like "*$q*") { $hit = $true; break }
                 }
                 if (-not $hit) { continue }
+            }
+            if ($colFilters.Count -gt 0) {
+                $allMatch = $true
+                foreach ($cf in $colFilters.GetEnumerator()) {
+                    $cellVal = "$($row.$($cf.Key))"
+                    if ($cellVal -notlike "*$($cf.Value)*") { $allMatch = $false; break }
+                }
+                if (-not $allMatch) { continue }
             }
             $row
         }
@@ -1345,6 +1573,9 @@
 
         $script:CurrentView = $View
         $cfg = $script:Views[$View]
+
+        # Reset per-column filters on view switch (different views have different paths)
+        if ($script:ColumnFilters) { $script:ColumnFilters.Clear() }
 
         $UI.Crumbs.Text    = $cfg.Crumbs
         $UI.ViewTitle.Text = $cfg.Title
@@ -1513,6 +1744,9 @@
     $UI.BtnConnect.Add_Click({ Do-Connect })
     $UI.BtnDisconnect.Add_Click({ Do-Disconnect })
     $UI.BtnRefresh.Add_Click({ if ($script:CurrentView) { Load-ViewData -View $script:CurrentView } })
+    $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
+    $UI.BtnWrap.Add_Click({ Toggle-Wrap })
+    $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
     $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
