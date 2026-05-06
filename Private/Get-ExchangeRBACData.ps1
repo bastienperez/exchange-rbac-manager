@@ -40,13 +40,22 @@ function Get-RBACRoleGroups {
 
     function Test-IsBuiltInRoleGroup {
         param($Group, [string[]]$Names, [string[]]$Prefixes)
-        # Prefer the cmdlet-supplied RoleGroupType when present.
-        if ($Group.PSObject.Properties.Name -contains 'RoleGroupType' -and $Group.RoleGroupType) {
-            if ("$($Group.RoleGroupType)" -match 'Standard|BuiltIn') { return $true }
+        # Do NOT trust Get-RoleGroup's RoleGroupType for this check: in Exchange
+        # Online both built-in and custom role groups commonly report
+        # RoleGroupType='Standard', so matching on it classified every role group
+        # as built-in and made the 'custom' chip return nothing.
+        # The reliable signal is the curated name list + tenant-suffixed prefixes.
+        $name = "$($Group.Name)".Trim()
+        if ([string]::IsNullOrEmpty($name)) { return $false }
+        foreach ($n in $Names) {
+            if ([string]::Equals($n, $name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
         }
-        if ($Names -contains $Group.Name) { return $true }
         foreach ($p in $Prefixes) {
-            if ($Group.Name -like "$p*") { return $true }
+            if ($name.StartsWith($p, [System.StringComparison]::OrdinalIgnoreCase)) {
+                return $true
+            }
         }
         return $false
     }
