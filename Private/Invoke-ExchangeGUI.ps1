@@ -559,30 +559,32 @@
     }
 
     # ---------------- View descriptors ----------------
-    # Badge palettes used across views (key match is case-insensitive at apply time).
+    # Badge palettes used across views. Keys are matched against the bound source
+    # value via DataTrigger, so the comparison is exact-match and case-sensitive.
+    # Values not in a palette render as plain text without a badge background.
     $BadgeOrigin = @{
-        'Built-in' = @{ Bg='#DEF7E0'; Fg='#1B5E20'; Border='#A5D6A7' }
-        'Custom'   = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
-        'Implicit' = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+        'Built-in' = @{ Bg='#DEF7E0'; Fg='#1B5E20' }
+        'Custom'   = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Implicit' = @{ Bg='#ECEFF1'; Fg='#37474F' }
     }
     $BadgeAssigneeType = @{
-        'User'           = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
-        'RoleGroup'      = @{ Bg='#FFF3E0'; Fg='#E65100'; Border='#FFCC80' }
-        'SecurityGroup'  = @{ Bg='#F3E5F5'; Fg='#6A1B9A'; Border='#CE93D8' }
-        'RoleAssignmentPolicy' = @{ Bg='#E0F7FA'; Fg='#006064'; Border='#80DEEA' }
-        'Computer'       = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+        'User'                 = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'RoleGroup'            = @{ Bg='#FFF3E0'; Fg='#E65100' }
+        'SecurityGroup'        = @{ Bg='#F3E5F5'; Fg='#6A1B9A' }
+        'RoleAssignmentPolicy' = @{ Bg='#E0F7FA'; Fg='#006064' }
+        'Computer'             = @{ Bg='#ECEFF1'; Fg='#37474F' }
     }
     $BadgeScopeType = @{
-        'Recipient'    = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
-        'Server'       = @{ Bg='#FFF3E0'; Fg='#E65100'; Border='#FFCC80' }
-        'Implicit'     = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
-        'Custom'       = @{ Bg='#DEF7E0'; Fg='#1B5E20'; Border='#A5D6A7' }
-        'OrganizationConfig' = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
-        'MyGAL'        = @{ Bg='#F3E5F5'; Fg='#6A1B9A'; Border='#CE93D8' }
+        'Recipient'          = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Server'             = @{ Bg='#FFF3E0'; Fg='#E65100' }
+        'Implicit'           = @{ Bg='#ECEFF1'; Fg='#37474F' }
+        'Custom'             = @{ Bg='#DEF7E0'; Fg='#1B5E20' }
+        'OrganizationConfig' = @{ Bg='#ECEFF1'; Fg='#37474F' }
+        'MyGAL'              = @{ Bg='#F3E5F5'; Fg='#6A1B9A' }
     }
     $BadgeRoleType = @{
-        'UnScoped'     = @{ Bg='#E3F2FD'; Fg='#0D47A1'; Border='#90CAF9' }
-        'Role'         = @{ Bg='#ECEFF1'; Fg='#37474F'; Border='#B0BEC5' }
+        'UnScoped' = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Role'     = @{ Bg='#ECEFF1'; Fg='#37474F' }
     }
 
     $script:Views = @{
@@ -693,13 +695,33 @@
     }
 
     # ---------------- Grid configuration ----------------
-    $script:ColumnFilters    = @{}
-    $script:FilterRowEnabled = $false
-    $script:WrapEnabled      = $false
+    $script:ColumnFilters       = @{}
+    $script:FilterRowEnabled    = $false
+    $script:WrapEnabled         = $false
+    $script:FilterDebounceTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $script:FilterDebounceTimer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $script:FilterDebounceTimer.Add_Tick({
+        $script:FilterDebounceTimer.Stop()
+        Apply-Filters
+    })
+
+    function Schedule-FilterApply {
+        $script:FilterDebounceTimer.Stop()
+        $script:FilterDebounceTimer.Start()
+    }
 
     function New-Brush {
         param([string]$Hex)
         New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Hex))
+    }
+
+    function Test-ContainsCI {
+        # Case-insensitive literal substring match. Avoids -like wildcard surprises
+        # (*, ?, [...]) when the input comes from a free-text filter input.
+        param([string]$Haystack, [string]$Needle)
+        if ([string]::IsNullOrEmpty($Needle))   { return $true }
+        if ([string]::IsNullOrEmpty($Haystack)) { return $false }
+        return ($Haystack.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
     }
 
     function Set-GridColumns {
@@ -740,7 +762,7 @@
                         if ($script:ColumnFilters.ContainsKey($key)) { $null = $script:ColumnFilters.Remove($key) }
                     }
                     else { $script:ColumnFilters[$key] = $val }
-                    Apply-Filters
+                    Schedule-FilterApply
                 })
                 $null = $headerPanel.Children.Add($fbox)
             }
@@ -786,15 +808,19 @@
             $eStyle.Setters.Add([System.Windows.Setter]::new(
                 [System.Windows.Controls.ToolTipService]::ToolTipProperty, $tt))
 
-            # Empty → em-dash, subdued (DataTrigger on the source value to avoid Text-feedback loops)
-            $emptyDT = [System.Windows.DataTrigger]::new()
-            $emptyDT.Binding = [System.Windows.Data.Binding]::new($c.Path)
-            $emptyDT.Value   = ''
-            $emptyDT.Setters.Add([System.Windows.Setter]::new(
-                [System.Windows.Controls.TextBlock]::TextProperty, [string]'-'))
-            $emptyDT.Setters.Add([System.Windows.Setter]::new(
-                [System.Windows.Controls.TextBlock]::ForegroundProperty, (New-Brush '#A19F9D')))
-            $eStyle.Triggers.Add($emptyDT)
+            # Empty/null → "-" placeholder, subdued. Two DataTriggers: one for null source,
+            # one for empty string. WPF DataTrigger does an exact-equals against Value so
+            # we need both to cover real-world data.
+            foreach ($missingValue in @($null, '')) {
+                $dt = [System.Windows.DataTrigger]::new()
+                $dt.Binding = [System.Windows.Data.Binding]::new($c.Path)
+                $dt.Value   = $missingValue
+                $dt.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextProperty, [string]'-'))
+                $dt.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::ForegroundProperty, (New-Brush '#A19F9D')))
+                $eStyle.Triggers.Add($dt)
+            }
 
             # Badge: colorise per known value (also a DataTrigger on the bound source value)
             if ($c.Kind -eq 'Badge' -and $c.BadgeMap) {
@@ -1478,7 +1504,7 @@
                 foreach ($p in $row.PSObject.Properties) {
                     if ($p.Name -like '_*') { continue }
                     $v = "$($p.Value)"
-                    if ($v -and $v -like "*$q*") { $hit = $true; break }
+                    if (Test-ContainsCI -Haystack $v -Needle $q) { $hit = $true; break }
                 }
                 if (-not $hit) { continue }
             }
@@ -1486,7 +1512,9 @@
                 $allMatch = $true
                 foreach ($cf in $colFilters.GetEnumerator()) {
                     $cellVal = "$($row.$($cf.Key))"
-                    if ($cellVal -notlike "*$($cf.Value)*") { $allMatch = $false; break }
+                    if (-not (Test-ContainsCI -Haystack $cellVal -Needle $cf.Value)) {
+                        $allMatch = $false; break
+                    }
                 }
                 if (-not $allMatch) { continue }
             }
