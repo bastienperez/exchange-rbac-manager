@@ -1,7 +1,7 @@
 ﻿function Invoke-ExchangeGUI {
     <#
     .SYNOPSIS
-        Modern WPF GUI for Exchange RBAC Manager — wireframe-derived layout.
+        Modern WPF GUI for Exchange RBAC Manager - wireframe-derived layout.
     .DESCRIPTION
         Sidebar (8 sections) + content head + toolbar + data area + action bar + status bar.
         Section 7 is the embedded RBAC Visualizer (hub-and-spoke).
@@ -560,7 +560,7 @@
         Scopes = @{
             Crumbs = 'RBAC ▸ Management Scopes'
             Title  = 'Scopes'
-            Desc   = 'Where a role applies — recipient or server filters.'
+            Desc   = 'Where a role applies - recipient or server filters.'
             Chips  = @('all','implicit','custom','recipient','server')
             Columns = @(
                 @{ Header='Scope Name';       Path='Name';                  Width=220 }
@@ -572,7 +572,7 @@
         UserRights = @{
             Crumbs = 'RBAC ▸ User Rights'
             Title  = 'User Rights'
-            Desc   = 'Effective permissions for a user — what they can run, where.'
+            Desc   = 'Effective permissions for a user - what they can run, where.'
             Chips  = @('expand role groups','show scopes')
             Columns = @(
                 @{ Header='User';        Path='User';        Width=240 }
@@ -658,7 +658,7 @@
         foreach ($p in $Item.PSObject.Properties) {
             if ($p.Name -like '_*') { continue }
             $val = "$($p.Value)"
-            if ([string]::IsNullOrEmpty($val)) { $val = '—' }
+            if ([string]::IsNullOrEmpty($val)) { $val = '-' }
             $rows.Add([PSCustomObject]@{ Key = $p.Name; Value = $val })
         }
         $UI.DetailsList.ItemsSource = $rows
@@ -1292,7 +1292,7 @@
         param([string]$View)
         $list = @()
         switch ($View) {
-            # NOTE: read-only mode — no create / edit / delete actions are exposed.
+            # NOTE: read-only mode - no create / edit / delete actions are exposed.
             'RoleGroups' {
                 $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn' -OnClick { Export-CurrentView })
             }

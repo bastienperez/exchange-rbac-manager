@@ -2,7 +2,7 @@
 
 A PowerShell module providing a Windows GUI to **inspect** Role-Based Access Control (RBAC) in **Exchange Online**.
 
-> **🔒 Read-only — current version.** This release only queries Exchange Online (`Get-*` cmdlets and `Search-AdminAuditLog`) and exports results to CSV / PNG. It does **not** create, modify or delete role groups, roles, assignments or scopes yet. For now, use the Exchange admin centre or `New-/Set-/Remove-*` cmdlets directly for any change.
+> **🔒 Read-only - current version.** This release only queries Exchange Online (`Get-*` cmdlets and `Search-AdminAuditLog`) and exports results to CSV / PNG. It does **not** create, modify or delete role groups, roles, assignments or scopes yet. For now, use the Exchange admin centre or `New-/Set-/Remove-*` cmdlets directly for any change.
 >
 > ✏️ **Coming in the next version:** create / edit / delete actions (role groups, role assignments, scopes, role-group membership).
 
@@ -18,10 +18,10 @@ A **READ-ONLY** badge is visible in every section header to make the current sco
 
 ### Not yet supported (planned for the next version)
 
-- 🟡 `New-*` — create role groups / assignments / scopes / roles
-- 🟡 `Set-*` — rename, edit description, change scope
-- 🟡 `Remove-*` — delete role groups / assignments / scopes / custom roles
-- 🟡 Membership — add / remove members of a role group
+- 🟡 `New-*` - create role groups / assignments / scopes / roles
+- 🟡 `Set-*` - rename, edit description, change scope
+- 🟡 `Remove-*` - delete role groups / assignments / scopes / custom roles
+- 🟡 Membership - add / remove members of a role group
 - 🟡 `Update-RoleGroupMember`
 
 **Eight sections** in the left navigation:
