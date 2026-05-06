@@ -9,27 +9,68 @@ function Get-RBACRoleGroups {
     #>
     [CmdletBinding()]
     param()
-    
+
+    # Built-in Exchange Online role groups — exact names.
+    $builtInRoleGroupNames = @(
+        'Compliance Administrator', 'Compliance Management',
+        'Communication Compliance', 'Communication Compliance Administrators',
+        'Communication Compliance Investigators',
+        'Delegated Setup', 'Discovery Management',
+        'Help Desk', 'Hygiene Management',
+        'Information Protection', 'Information Protection Admins',
+        'Information Protection Analysts', 'Information Protection Investigators',
+        'Information Protection Readers',
+        'Insider Risk Management', 'Insider Risk Management Admins',
+        'Insider Risk Management Investigators',
+        'MailboxSearch', 'Organization Management',
+        'Places Administrators',
+        'Privacy Management', 'Privacy Management Administrators',
+        'Privacy Management Investigators',
+        'Public Folder Management', 'Recipient Management', 'Records Management',
+        'Security Administrator', 'Security Operator', 'Security Reader',
+        'Server Management', 'UM Management',
+        'View-Only Organization Management', 'View-Only Recipient Management'
+    )
+    # Built-in role groups whose tenant-scoped suffix varies (e.g. "MailboxAdmins_1e071").
+    $builtInRoleGroupPrefixes = @(
+        'ISVMailboxUsers_', 'MailboxAdmins_', 'HelpdeskAdmins_',
+        'TenantAdmins_', 'ExchangeServiceAdmins_',
+        'GlobalReaders_', 'SecurityAdmins_', 'SecurityReaders_'
+    )
+
+    function Test-IsBuiltInRoleGroup {
+        param($Group, [string[]]$Names, [string[]]$Prefixes)
+        # Prefer the cmdlet-supplied RoleGroupType when present.
+        if ($Group.PSObject.Properties.Name -contains 'RoleGroupType' -and $Group.RoleGroupType) {
+            if ("$($Group.RoleGroupType)" -match 'Standard|BuiltIn') { return $true }
+        }
+        if ($Names -contains $Group.Name) { return $true }
+        foreach ($p in $Prefixes) {
+            if ($Group.Name -like "$p*") { return $true }
+        }
+        return $false
+    }
+
     try {
-        $roleGroups = Get-RoleGroup
-        
-        if ($roleGroups) {
-            # Prepare data for display
-            $displayData = $roleGroups | ForEach-Object {
-                [PSCustomObject]@{
-                    Name        = $_.Name
-                    Description = $_.Description
-                    MemberCount = if ($_.Members) { @($_.Members).Count } else { 0 }
-                    RoleCount   = if ($_.Roles) { @($_.Roles).Count } else { 0 }
-                    Members     = $_.Members
-                    Roles       = $_.Roles
-                }
+        $roleGroups = Get-RoleGroup -ErrorAction Stop
+        if (-not $roleGroups) { return @() }
+
+        $displayData = foreach ($g in $roleGroups) {
+            $isBuiltIn = Test-IsBuiltInRoleGroup -Group $g `
+                          -Names $builtInRoleGroupNames -Prefixes $builtInRoleGroupPrefixes
+            $origin = if ($isBuiltIn) { 'Built-in' } else { 'Custom' }
+
+            [PSCustomObject]@{
+                Name        = $g.Name
+                Description = $g.Description
+                Origin      = $origin
+                MemberCount = if ($g.Members) { @($g.Members).Count } else { 0 }
+                RoleCount   = if ($g.Roles)   { @($g.Roles).Count   } else { 0 }
+                Members     = $g.Members
+                Roles       = $g.Roles
             }
-            return $displayData
         }
-        else {
-            return @()
-        }
+        return $displayData
     }
     catch {
         throw "Error loading role groups: $_"
@@ -108,6 +149,7 @@ function Get-RBACRoleAssignments {
                     Role                      = $_.Role
                     RoleAssignee              = $_.RoleAssigneeName
                     RoleAssigneeType          = $_.RoleAssigneeType
+                    Enabled                   = $_.Enabled
                     RecipientReadScope        = $readScope
                     RecipientWriteScope       = $writeScope
                     CustomRecipientReadScope  = $_.CustomRecipientReadScope

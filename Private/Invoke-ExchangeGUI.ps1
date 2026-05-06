@@ -421,8 +421,10 @@
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
         )) { $UI[$n] = $window.FindName($n) }
 
-    $script:CurrentView = $null
-    $script:Cache = @{}                # cached collections per view
+    $script:CurrentView   = $null
+    $script:Cache         = @{}        # cached collections per view
+    $script:ActiveChip    = @{}        # active chip label per view
+    $script:CurrentChips  = @()        # chip labels for the current view
     $script:VizAssignment = $null      # currently visualized assignment
 
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
@@ -474,22 +476,46 @@
         $b = [System.Windows.Controls.Border]::new()
         $b.CornerRadius = '11'; $b.BorderThickness = '1'; $b.Margin = '0,0,6,0'; $b.Padding = '10,4'; $b.Height = 22
         $b.VerticalAlignment = 'Center'
+        $b.Cursor = [System.Windows.Input.Cursors]::Hand
         if ($On) { $b.Background = '#0078D4'; $b.BorderBrush = '#0078D4' }
         else     { $b.Background = 'White';   $b.BorderBrush = '#C8C6C4' }
         $t = [System.Windows.Controls.TextBlock]::new()
         $t.Text = $Label; $t.FontFamily = 'Consolas'; $t.FontSize = 11
         $t.Foreground = $(if ($On) { 'White' } else { '#323130' })
         $t.VerticalAlignment = 'Center'
+        $t.IsHitTestVisible = $false   # so the chip border owns the hit
         $b.Child = $t
+        # Stash the chip label on Tag for the click handler.
+        $b.Tag = $Label
+        $b.Add_MouseLeftButtonDown({
+            $label = $args[0].Tag
+            if ($label) { Switch-Chip -Label $label }
+        })
         return $b
     }
 
     function Set-Chips {
-        param([string[]]$Labels, [int]$ActiveIndex = 0)
+        param([string[]]$Labels, [string]$ActiveLabel)
         $UI.ChipsHost.Items.Clear()
-        for ($i = 0; $i -lt $Labels.Count; $i++) {
-            $null = $UI.ChipsHost.Items.Add( (New-Chip -Label $Labels[$i] -On:($i -eq $ActiveIndex)) )
+        $script:CurrentChips = $Labels
+        if (-not $ActiveLabel -and $Labels.Count -gt 0) { $ActiveLabel = $Labels[0] }
+        $script:ActiveChip[$script:CurrentView] = $ActiveLabel
+        foreach ($lbl in $Labels) {
+            $null = $UI.ChipsHost.Items.Add( (New-Chip -Label $lbl -On:($lbl -eq $ActiveLabel)) )
         }
+    }
+
+    function Switch-Chip {
+        param([string]$Label)
+        if (-not $script:CurrentView) { return }
+        if (-not $script:CurrentChips -or $script:CurrentChips -notcontains $Label) { return }
+        $script:ActiveChip[$script:CurrentView] = $Label
+        # Re-draw chips with the new active state
+        $UI.ChipsHost.Items.Clear()
+        foreach ($lbl in $script:CurrentChips) {
+            $null = $UI.ChipsHost.Items.Add( (New-Chip -Label $lbl -On:($lbl -eq $Label)) )
+        }
+        Apply-Filters
     }
 
     function New-ActionButton {
@@ -498,12 +524,11 @@
         $b.Content = $Label
         $b.Style = $window.FindResource($Style)
         if ($OnClick) {
-            # Stash the scriptblock on the button itself; click handler retrieves it from sender.
-            # Avoids closure/delegate-cast quirks across PS 5.1 / 7.
+            # Stash the scriptblock on the button; the click handler reads it from the sender.
+            # Read sender via $args[0] (param-binding through delegate is unreliable in PS 5.1).
             $b.Tag = $OnClick
             $b.Add_Click({
-                param($sender, $e)
-                $sb = $sender.Tag
+                $sb = $args[0].Tag
                 if ($sb -is [scriptblock]) { & $sb }
             })
         }
@@ -1149,12 +1174,63 @@
     }
 
     # ---------------- Search / filter ----------------
-    function Apply-Search {
+    function Test-ChipMatch {
+        # Returns $true if the row matches the active chip for the current view.
+        # Chip 'all' (or null) is a no-op.
+        param($Row, [string]$View, [string]$Chip)
+        if (-not $Chip -or $Chip -eq 'all') { return $true }
+        switch ($View) {
+            'RoleGroups' {
+                switch ($Chip) {
+                    'built-in' { return ($Row.Origin -eq 'Built-in') }
+                    'custom'   { return ($Row.Origin -eq 'Custom') }
+                }
+            }
+            'Roles' {
+                switch ($Chip) {
+                    'built-in'   { return ($Row.Origin -eq 'Built-in') }
+                    'custom'     { return ($Row.Origin -eq 'Custom') }
+                    'unassigned' {
+                        # Roles with no live assignment in the cache
+                        if (-not $script:Cache.Assignments) { return $true }
+                        $name = $Row.Name
+                        foreach ($asg in $script:Cache.Assignments) {
+                            if ($asg.Role -eq $name) { return $false }
+                        }
+                        return $true
+                    }
+                }
+            }
+            'Assignments' {
+                switch ($Chip) {
+                    'enabled'  { return ([bool]$Row.Enabled -eq $true) }
+                    'disabled' { return ([bool]$Row.Enabled -eq $false) }
+                }
+            }
+            'Scopes' {
+                $t = "$($Row.ScopeRestrictionType)"
+                switch ($Chip) {
+                    'implicit'  { return ($t -like '*Implicit*') }
+                    'custom'    { return ($t -notlike '*Implicit*') }
+                    'recipient' { return ($t -like '*Recipient*') }
+                    'server'    { return ($t -like '*Server*') }
+                }
+            }
+            'Audit' {
+                # Audit chips drive the query window — handled at load time, not here.
+                return $true
+            }
+        }
+        return $true
+    }
+
+    function Apply-Filters {
+        $view = $script:CurrentView
         $q = $UI.SearchBox.Text
         if (-not $q) { $q = '' }
         $q = $q.Trim()
 
-        switch ($script:CurrentView) {
+        switch ($view) {
             'RoleGroups'  { $src = $script:Cache.RoleGroups }
             'Roles'       { $src = $script:Cache.Roles }
             'Assignments' { $src = $script:Cache.Assignments }
@@ -1173,20 +1249,28 @@
             default { return }
         }
         if (-not $src) { return }
-        if ($q -eq '') { $filtered = $src }
-        else {
-            $filtered = @($src | Where-Object {
-                foreach ($p in $_.PSObject.Properties) {
+
+        $chip = $script:ActiveChip[$view]
+        $filtered = foreach ($row in $src) {
+            if (-not (Test-ChipMatch -Row $row -View $view -Chip $chip)) { continue }
+            if ($q -ne '') {
+                $hit = $false
+                foreach ($p in $row.PSObject.Properties) {
                     if ($p.Name -like '_*') { continue }
                     $v = "$($p.Value)"
-                    if ($v -and $v -like "*$q*") { return $true }
+                    if ($v -and $v -like "*$q*") { $hit = $true; break }
                 }
-                return $false
-            })
+                if (-not $hit) { continue }
+            }
+            $row
         }
+        $filtered = @($filtered)
         $UI.MainGrid.ItemsSource = $filtered
         $UI.ItemCount.Text = "$(@($filtered).Count) items"
     }
+
+    # Backward-compat alias kept for existing event wiring
+    function Apply-Search { Apply-Filters }
 
     function Lookup-UserRights {
         param([string]$User)
@@ -1266,7 +1350,8 @@
         $UI.ViewTitle.Text = $cfg.Title
         $UI.ViewDesc.Text  = $cfg.Desc
         $UI.SearchBox.Text = ''
-        Set-Chips -Labels $cfg.Chips -ActiveIndex 0
+        $defaultChip = if ($cfg.Chips -and $cfg.Chips.Count -gt 0) { $cfg.Chips[0] } else { '' }
+        Set-Chips -Labels $cfg.Chips -ActiveLabel $defaultChip
         $UI.ItemCount.Text = '0 items'
         $UI.SelectionCount.Text = '0 selected'
         Hide-Details
