@@ -130,6 +130,52 @@
         </Trigger>
       </Style.Triggers>
     </Style>
+
+    <!-- Dark pill button used inside the floating action bar. -->
+    <Style x:Key="BtnDark" TargetType="Button">
+      <Setter Property="Background"  Value="Transparent"/>
+      <Setter Property="Foreground"  Value="White"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Padding" Value="10,4"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="FontWeight" Value="Medium"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#26272D"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <!-- Destructive variant of the dark pill button (red text, dark red hover). -->
+    <Style x:Key="BtnDarkDanger" TargetType="Button" BasedOn="{StaticResource BtnDark}">
+      <Setter Property="Foreground" Value="#FCA5A5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="6"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#3F1F1F"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <!-- Stateful toggle (Filter, Wrap…). Same template as ActionBtn but reacts to IsChecked. -->
     <Style x:Key="ToggleActionBtn" TargetType="ToggleButton">
       <Setter Property="Padding" Value="14,0"/>
@@ -324,11 +370,11 @@
     <!-- Main content -->
     <Grid Grid.Column="1" Background="White">
       <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="*"/>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>  <!-- Content head -->
+        <RowDefinition Height="Auto"/>  <!-- Toolbar -->
+        <RowDefinition Height="Auto"/>  <!-- Filter chips row (collapses when no chips) -->
+        <RowDefinition Height="*"/>     <!-- Content + floating action bar overlay -->
+        <RowDefinition Height="Auto"/>  <!-- Status bar -->
       </Grid.RowDefinitions>
 
       <!-- Content head — no bottom border, the toolbar's own divider handles separation. -->
@@ -351,10 +397,12 @@
               BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>  <!-- Search box -->
+            <ColumnDefinition Width="*"/>     <!-- spacer -->
+            <ColumnDefinition Width="Auto"/>  <!-- View modifiers (Filter/Wrap/Auto-fit) -->
+            <ColumnDefinition Width="Auto"/>  <!-- Item count chip -->
+            <ColumnDefinition Width="Auto"/>  <!-- View-level Tool buttons (Refresh, Export, …) -->
+            <ColumnDefinition Width="Auto"/>  <!-- Primary action (+ New) -->
           </Grid.ColumnDefinitions>
           <Border x:Name="SearchHost" Grid.Column="0" BorderThickness="1" CornerRadius="4"
                   Background="White" Width="280" Height="30">
@@ -390,31 +438,38 @@
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </Border>
           </Popup>
-          <ItemsControl x:Name="ChipsHost" Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-          </ItemsControl>
-          <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
+          <StackPanel x:Name="GridModifiers" Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
             <ToggleButton x:Name="BtnFilterRow" Content="Filter" Style="{StaticResource ToggleActionBtn}" Margin="0,0,6,0"
                           ToolTip="Toggle a filter input in each column header"/>
             <ToggleButton x:Name="BtnWrap" Content="Wrap" Style="{StaticResource ToggleActionBtn}" Margin="0,0,6,0"
                           ToolTip="Toggle text wrapping on long cells"/>
             <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
                     ToolTip="Resize columns to fit current content"/>
-            <Border Width="1" Background="#E1DFDD" Margin="6,4"/>
-            <Button x:Name="BtnRefresh" Content="⟳  Refresh" Style="{StaticResource ActionBtn}"
-                    ToolTip="Reload data for the current view"/>
           </StackPanel>
           <Border Grid.Column="3" CornerRadius="10" Padding="10,3" Background="#EFEDEB" VerticalAlignment="Center">
             <TextBlock x:Name="ItemCount" FontFamily="Consolas" FontSize="11"
                        Foreground="{StaticResource Subdued}" Text="0 items"/>
           </Border>
+          <!-- View-level tools (Refresh, Export, audit timeframes…) injected by Set-Actions. -->
+          <StackPanel x:Name="ToolbarTools"   Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0"/>
+          <!-- Primary view action (+ New, Lookup, Pick assignment…) injected by Set-Actions. -->
+          <StackPanel x:Name="ToolbarPrimary" Grid.Column="5" Orientation="Horizontal" Margin="12,0,0,0"/>
         </Grid>
       </Border>
 
+      <!-- Filter chips (per-view buckets) on their own row to avoid squeezing them
+           against the toolbar's right-hand cluster. Hidden when a view has no chips. -->
+      <Border x:Name="ChipsHostBorder" Grid.Row="2" Background="{StaticResource ToolbarBg}"
+              Padding="24,8" BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
+        <ItemsControl x:Name="ChipsHost">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+      </Border>
+
       <!-- Content area: table OR visualizer + slide-out details panel -->
-      <Grid Grid.Row="2">
+      <Grid Grid.Row="3">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition x:Name="DetailsCol" Width="0"/>
@@ -426,7 +481,7 @@
             <ScrollViewer x:Name="VizScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
               <Canvas x:Name="VizCanvas" Background="White" ClipToBounds="True"/>
             </ScrollViewer>
-            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+            <Border x:Name="VizPlaceholderBox" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Background="#F3F2F1" CornerRadius="6" Padding="14,10">
               <TextBlock x:Name="VizPlaceholder" Text="Pick an assignment in the toolbar to visualize."
                          Foreground="#605E5C" FontSize="13"/>
@@ -529,28 +584,45 @@
         </Border>
       </Grid>
 
-      <!-- Action bar -->
-      <Border Grid.Row="3" Background="{StaticResource ToolbarBg}" Padding="24,12"
-              BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,0">
-        <Grid>
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>  <!-- selection chip -->
-            <ColumnDefinition Width="*"/>     <!-- spacer -->
-            <ColumnDefinition Width="Auto"/>  <!-- left cluster (New, Edit, Copy, Visualize, Lookup) -->
-            <ColumnDefinition Width="Auto"/>  <!-- separator + destructive -->
-            <ColumnDefinition Width="Auto"/>  <!-- export -->
-          </Grid.ColumnDefinitions>
-          <Border Grid.Column="0" CornerRadius="10" Padding="10,3" Background="#EFEDEB" VerticalAlignment="Center">
-            <TextBlock x:Name="SelectionCount" Text="0 selected"
-                       FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Subdued}"/>
+      <!-- Floating contextual action bar — only visible when at least one row is selected.
+           Compact pill, sits as an overlay above the content row, centered at the bottom. -->
+      <Border x:Name="FloatingActions" Grid.Row="3"
+              Background="#16181D" CornerRadius="9" Padding="6,3"
+              VerticalAlignment="Bottom" HorizontalAlignment="Center"
+              Margin="0,0,0,18" Visibility="Collapsed">
+        <Border.Effect>
+          <DropShadowEffect Color="Black" BlurRadius="20" ShadowDepth="6" Opacity="0.18" Direction="270"/>
+        </Border.Effect>
+        <StackPanel Orientation="Horizontal">
+          <Border Background="#26272D" CornerRadius="4" Padding="6,1" VerticalAlignment="Center" Margin="2,0">
+            <StackPanel Orientation="Horizontal">
+              <TextBlock x:Name="FloatingCount" Text="0" Foreground="White" FontFamily="Consolas" FontSize="11"/>
+              <TextBlock Text=" selected" Foreground="White" FontSize="11" Margin="2,0,0,0"/>
+            </StackPanel>
           </Border>
-          <StackPanel x:Name="ActionsLeft"  Grid.Column="2" Orientation="Horizontal"/>
-          <StackPanel Grid.Column="3" Orientation="Horizontal">
-            <Border x:Name="ActionsMidSep" Width="1" Background="#E1DFDD" Margin="6,4" Visibility="Collapsed"/>
-            <StackPanel x:Name="ActionsMid" Orientation="Horizontal"/>
-          </StackPanel>
-          <StackPanel x:Name="ActionsRight" Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0"/>
-        </Grid>
+          <Border Width="1" Height="14" Background="#3A3B40" Margin="6,0"/>
+          <StackPanel x:Name="FloatingSelectionActions" Orientation="Horizontal"/>
+          <Border x:Name="FloatingSep" Width="1" Height="14" Background="#3A3B40" Margin="4,0" Visibility="Collapsed"/>
+          <StackPanel x:Name="FloatingDestructive" Orientation="Horizontal"/>
+          <Button x:Name="FloatingClose" Width="22" Height="22" Margin="4,0,0,0"
+                  Background="Transparent" BorderThickness="0" Cursor="Hand"
+                  ToolTip="Clear selection">
+            <Button.Template>
+              <ControlTemplate TargetType="Button">
+                <Border x:Name="bd" Background="Transparent" CornerRadius="4">
+                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <ControlTemplate.Triggers>
+                  <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="bd" Property="Background" Value="#26272D"/>
+                  </Trigger>
+                </ControlTemplate.Triggers>
+              </ControlTemplate>
+            </Button.Template>
+            <TextBlock Text="✕" Foreground="White" FontSize="11" Opacity="0.7"
+                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
+          </Button>
+        </StackPanel>
       </Border>
 
       <!-- Status bar -->
@@ -635,12 +707,12 @@
     foreach ($n in @(
             'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','VersionLabel',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
-            'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost',
-            'BtnRefresh','BtnFilterRow','BtnWrap','BtnAutoFit',
-            'ItemCount',
-            'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder',
+            'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost','ChipsHostBorder',
+            'BtnFilterRow','BtnWrap','BtnAutoFit','GridModifiers',
+            'ItemCount','ToolbarTools','ToolbarPrimary',
+            'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder','VizPlaceholderBox',
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose',
-            'SelectionCount','ActionsLeft','ActionsMid','ActionsRight','ActionsMidSep',
+            'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive','FloatingClose',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
         )) { $UI[$n] = $window.FindName($n) }
 
@@ -786,6 +858,8 @@
         foreach ($lbl in $Labels) {
             $null = $UI.ChipsHost.Items.Add( (New-Chip -Label $lbl -On:($lbl -eq $ActiveLabel)) )
         }
+        # Hide the chips row entirely when a view defines no chips.
+        $UI.ChipsHostBorder.Visibility = if ($Labels.Count -gt 0) { 'Visible' } else { 'Collapsed' }
     }
 
     function Switch-Chip {
@@ -806,8 +880,8 @@
             [string]$Label,
             [string]$Style = 'ActionBtn',
             [scriptblock]$OnClick,
-            [ValidateSet('Left','Mid','Right')]
-            [string]$Slot = 'Left'
+            [ValidateSet('Primary','Tool','Selection','Destructive')]
+            [string]$Kind = 'Tool'
         )
         $b = [System.Windows.Controls.Button]::new()
         $b.Content = $Label
@@ -820,24 +894,30 @@
             })
         }
         # Wrap so the dispatcher knows which zone to put the button in.
-        return [pscustomobject]@{ Button = $b; Slot = $Slot }
+        return [pscustomobject]@{ Button = $b; Kind = $Kind }
     }
 
     function Set-Actions {
+        # Distributes buttons into 4 zones:
+        #   - ToolbarTools     (top, view-level: Refresh, Export, audit timeframes…)
+        #   - ToolbarPrimary   (top, signature action: + New, Lookup, Pick assignment…)
+        #   - FloatingSelectionActions (bottom floating bar: Edit, Copy, Visualize…)
+        #   - FloatingDestructive      (bottom floating bar, isolated: Delete)
         param([array]$Buttons)
-        $UI.ActionsLeft.Children.Clear()
-        $UI.ActionsMid.Children.Clear()
-        $UI.ActionsRight.Children.Clear()
-        $UI.ActionsMidSep.Visibility = 'Collapsed'
+        foreach ($p in 'ToolbarTools','ToolbarPrimary','FloatingSelectionActions','FloatingDestructive') {
+            $UI[$p].Children.Clear()
+        }
+        $UI.FloatingSep.Visibility = 'Collapsed'
 
         foreach ($entry in $Buttons) {
-            switch ($entry.Slot) {
-                'Right' { $null = $UI.ActionsRight.Children.Add($entry.Button) }
-                'Mid'   {
-                    $null = $UI.ActionsMid.Children.Add($entry.Button)
-                    $UI.ActionsMidSep.Visibility = 'Visible'
+            switch ($entry.Kind) {
+                'Primary'     { $null = $UI.ToolbarPrimary.Children.Add($entry.Button) }
+                'Tool'        { $null = $UI.ToolbarTools.Children.Add($entry.Button) }
+                'Selection'   { $null = $UI.FloatingSelectionActions.Children.Add($entry.Button) }
+                'Destructive' {
+                    $null = $UI.FloatingDestructive.Children.Add($entry.Button)
+                    $UI.FloatingSep.Visibility = 'Visible'
                 }
-                default { $null = $UI.ActionsLeft.Children.Add($entry.Button) }
             }
         }
     }
@@ -845,6 +925,110 @@
     # ---------------- Write-mode helpers ----------------
     # All write actions go through Show-CmdletPreview which exposes
     # "Run cmdlet" / "Copy cmdlet" / "Cancel" buttons — no global toggle needed.
+
+    # Shared resource block injected into every modal dialog so they all share
+    # the same input/button/label styling as the main window.
+    $script:DlgResourcesXaml = @'
+    <Window.Resources>
+      <Style x:Key="DlgLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Foreground" Value="#323130"/>
+        <Setter Property="Margin" Value="0,0,0,4"/>
+      </Style>
+      <Style x:Key="DlgTextBox" TargetType="TextBox">
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="Padding" Value="10,7"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#C8C6C4"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="TextBox">
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}"
+                      BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+                <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                              VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsKeyboardFocused" Value="True">
+                  <Setter TargetName="bd" Property="BorderBrush" Value="#0078D4"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="DlgComboBox" TargetType="ComboBox">
+        <Setter Property="MinHeight" Value="32"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#C8C6C4"/>
+      </Style>
+      <Style x:Key="DlgListBox" TargetType="ListBox">
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="BorderBrush" Value="#C8C6C4"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="FontSize" Value="12"/>
+        <Setter Property="Padding" Value="2"/>
+      </Style>
+      <Style x:Key="DlgBtn" TargetType="Button">
+        <Setter Property="MinWidth" Value="92"/>
+        <Setter Property="Height" Value="32"/>
+        <Setter Property="Padding" Value="14,0"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Background" Value="White"/>
+        <Setter Property="Foreground" Value="#201F1E"/>
+        <Setter Property="BorderBrush" Value="#C8C6C4"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="bd" Property="Background" Value="#F3F2F1"/>
+                  <Setter TargetName="bd" Property="BorderBrush" Value="#A19F9D"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+      <Style x:Key="DlgBtnPrimary" TargetType="Button" BasedOn="{StaticResource DlgBtn}">
+        <Setter Property="Background" Value="#0078D4"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="BorderBrush" Value="#0078D4"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Border x:Name="bd" Background="{TemplateBinding Background}"
+                      BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4"
+                      Padding="{TemplateBinding Padding}">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
+              <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                  <Setter TargetName="bd" Property="Background" Value="#106EBE"/>
+                  <Setter TargetName="bd" Property="BorderBrush" Value="#106EBE"/>
+                </Trigger>
+              </ControlTemplate.Triggers>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </Window.Resources>
+'@
 
     function Show-CmdletPreview {
         <#
@@ -858,34 +1042,99 @@
         $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="680" Height="340" WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize" SizeToContent="Manual">
-  <Grid Margin="14">
+        Title="" Width="720" Height="380" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="CanResize"
+        ShowInTaskbar="False" SizeToContent="Manual">
+  <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/>
-      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>  <!-- header band -->
+      <RowDefinition Height="*"/>     <!-- code body -->
+      <RowDefinition Height="Auto"/>  <!-- footer with buttons -->
     </Grid.RowDefinitions>
-    <TextBlock Grid.Row="0" Text="Cmdlet that will be run on Exchange Online"
-               FontWeight="SemiBold" Margin="0,0,0,6"/>
-    <TextBox x:Name="CmdletText" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap"
-             FontFamily="Consolas" FontSize="12" IsReadOnly="True"
-             VerticalScrollBarVisibility="Auto"/>
-    <Grid Grid.Row="2" Margin="0,10,0,0">
+
+    <!-- Header band — same off-white surface as the main toolbar. -->
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1"
+            Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Review the command that will be executed on Exchange Online."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <!-- Code body — monospace on a soft surface so it reads as a code block. -->
+    <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1"
+            Padding="20,16">
+      <Border Background="White" BorderBrush="#E1DFDD" BorderThickness="1" CornerRadius="6">
+        <TextBox x:Name="CmdletText" AcceptsReturn="True" TextWrapping="Wrap"
+                 FontFamily="Consolas" FontSize="12" IsReadOnly="True"
+                 BorderThickness="0" Background="Transparent"
+                 Padding="14,10" VerticalScrollBarVisibility="Auto"/>
+      </Border>
+    </Border>
+
+    <!-- Footer: Copy on the left, Cancel + Run on the right. -->
+    <Grid Grid.Row="2" Background="#F8F8F8">
       <Grid.ColumnDefinitions>
         <ColumnDefinition Width="Auto"/>
         <ColumnDefinition Width="*"/>
         <ColumnDefinition Width="Auto"/>
         <ColumnDefinition Width="Auto"/>
       </Grid.ColumnDefinitions>
-      <Button x:Name="BtnCopy" Grid.Column="0" Content="Copy cmdlet" Width="120" Height="32"
-              Background="White" BorderBrush="#C8C6C4" BorderThickness="1" Foreground="#201F1E" Cursor="Hand"/>
-      <Button x:Name="BtnCancel" Grid.Column="2" Content="Cancel" Width="90" Height="32" Margin="0,0,8,0"
-              Background="White" BorderBrush="#C8C6C4" BorderThickness="1" Foreground="#201F1E" Cursor="Hand"
-              IsCancel="True"/>
+      <Button x:Name="BtnCopy" Grid.Column="0" Content="Copy cmdlet" Width="130" Height="32"
+              Margin="20,12,0,12" Background="White" BorderBrush="#C8C6C4" BorderThickness="1"
+              Foreground="#201F1E" Cursor="Hand">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#F3F2F1"/>
+                <Setter TargetName="bd" Property="BorderBrush" Value="#A19F9D"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Button.Template>
+      </Button>
+      <Button x:Name="BtnCancel" Grid.Column="2" Content="Cancel" Width="90" Height="32"
+              Margin="0,12,8,12" Background="White" BorderBrush="#C8C6C4" BorderThickness="1"
+              Foreground="#201F1E" Cursor="Hand" IsCancel="True">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#F3F2F1"/>
+                <Setter TargetName="bd" Property="BorderBrush" Value="#A19F9D"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Button.Template>
+      </Button>
       <Button x:Name="BtnRun" Grid.Column="3" Content="Run cmdlet" Width="130" Height="32"
-              Background="#0078D4" BorderBrush="#0078D4" BorderThickness="1" Foreground="White"
-              FontWeight="SemiBold" Cursor="Hand" IsDefault="True"/>
+              Margin="0,12,20,12" Background="#0078D4" BorderBrush="#0078D4" BorderThickness="1"
+              Foreground="White" FontWeight="SemiBold" Cursor="Hand" IsDefault="True">
+        <Button.Template>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#106EBE"/>
+                <Setter TargetName="bd" Property="BorderBrush" Value="#106EBE"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Button.Template>
+      </Button>
     </Grid>
   </Grid>
 </Window>
@@ -894,6 +1143,7 @@
         $w = [System.Windows.Markup.XamlReader]::Load($reader)
         $w.Title = $Title
         $w.Owner = $window
+        $w.FindName('DlgTitle').Text = $Title
         $tb     = $w.FindName('CmdletText')
         $btnCp  = $w.FindName('BtnCopy')
         $btnCa  = $w.FindName('BtnCancel')
@@ -923,82 +1173,107 @@
             [bool]$DefaultIncludeMembers= $false,
             [string]$NameLabel          = 'Name'
         )
-        $xaml = @'
+        $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="620" Height="720" WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize">
-  <Grid Margin="14">
+        Title="" Width="640" Height="760" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="CanResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock x:Name="LblName" Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
-    <TextBlock Grid.Row="2" Text="Description" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtDesc" Grid.Row="3" Height="48" Margin="0,4,0,10"
-              AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
 
-    <!-- Roles -->
-    <TextBlock Grid.Row="4" Text="Roles" FontWeight="SemiBold" Margin="0,4,0,4"/>
-    <Grid Grid.Row="5" Margin="0,0,0,10">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="*"/>
-      </Grid.RowDefinitions>
-      <Grid Grid.Row="0" Margin="0,0,0,4">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <ComboBox x:Name="CmbRoleAdd" Grid.Column="0" Height="28" IsEditable="True"
-                  StaysOpenOnEdit="True"
-                  ToolTip="Pick from existing management roles or type a name"/>
-        <Button   x:Name="BtnRoleAdd"    Grid.Column="1" Content="Add" Width="80" Height="28" Margin="6,0,0,0"/>
-        <Button   x:Name="BtnRoleRemove" Grid.Column="2" Content="Remove" Width="80" Height="28" Margin="6,0,0,0"/>
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Define name, description, granted roles and members."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="20,16">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock x:Name="LblName" Grid.Row="0" Text="Name" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtName" Grid.Row="1" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="2" Text="Description" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtDesc" Grid.Row="3" Style="{StaticResource DlgTextBox}" Height="56" Margin="0,0,0,12"
+                  AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+
+        <!-- Roles -->
+        <TextBlock Grid.Row="4" Text="Roles" Style="{StaticResource DlgLabel}"/>
+        <Grid Grid.Row="5" Margin="0,0,0,12">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Grid.Row="0" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="CmbRoleAdd" Grid.Column="0" Style="{StaticResource DlgComboBox}" IsEditable="True"
+                      StaysOpenOnEdit="True"
+                      ToolTip="Pick from existing management roles or type a name"/>
+            <Button   x:Name="BtnRoleAdd"    Grid.Column="1" Content="Add"    Style="{StaticResource DlgBtn}" Margin="6,0,0,0"/>
+            <Button   x:Name="BtnRoleRemove" Grid.Column="2" Content="Remove" Style="{StaticResource DlgBtn}" Margin="6,0,0,0"/>
+          </Grid>
+          <ListBox x:Name="LstRoles" Grid.Row="1" Style="{StaticResource DlgListBox}"
+                   SelectionMode="Extended" FontFamily="Consolas"/>
+        </Grid>
+
+        <!-- Members -->
+        <TextBlock Grid.Row="6" Text="Members (UPN or alias)" Style="{StaticResource DlgLabel}"/>
+        <Grid Grid.Row="7" Margin="0,0,0,12">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Grid.Row="0" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TxtMemberAdd"  Grid.Column="0" Style="{StaticResource DlgTextBox}"
+                     ToolTip="Type a UPN or mailbox alias and press Enter or Add"/>
+            <Button  x:Name="BtnMemberAdd"    Grid.Column="1" Content="Add"    Style="{StaticResource DlgBtn}" Margin="6,0,0,0"/>
+            <Button  x:Name="BtnMemberRemove" Grid.Column="2" Content="Remove" Style="{StaticResource DlgBtn}" Margin="6,0,0,0"/>
+          </Grid>
+          <ListBox x:Name="LstMembers" Grid.Row="1" Style="{StaticResource DlgListBox}"
+                   SelectionMode="Extended" FontFamily="Consolas"/>
+        </Grid>
+
+        <CheckBox x:Name="ChkIncludeMembers" Grid.Row="8" Content="Include members from source"
+                  Margin="0,0,0,0" Visibility="Collapsed"/>
       </Grid>
-      <ListBox x:Name="LstRoles" Grid.Row="1" SelectionMode="Extended" FontFamily="Consolas" FontSize="12"/>
-    </Grid>
+    </Border>
 
-    <!-- Members -->
-    <TextBlock Grid.Row="6" Text="Members (UPN or alias)" FontWeight="SemiBold" Margin="0,4,0,4"/>
-    <Grid Grid.Row="7" Margin="0,0,0,10">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="*"/>
-      </Grid.RowDefinitions>
-      <Grid Grid.Row="0" Margin="0,0,0,4">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <TextBox x:Name="TxtMemberAdd"  Grid.Column="0" Height="28" VerticalContentAlignment="Center"
-                 ToolTip="Type a UPN or mailbox alias and press Enter or Add"/>
-        <Button  x:Name="BtnMemberAdd"    Grid.Column="1" Content="Add"    Width="80" Height="28" Margin="6,0,0,0" IsDefault="False"/>
-        <Button  x:Name="BtnMemberRemove" Grid.Column="2" Content="Remove" Width="80" Height="28" Margin="6,0,0,0"/>
-      </Grid>
-      <ListBox x:Name="LstMembers" Grid.Row="1" SelectionMode="Extended" FontFamily="Consolas" FontSize="12"/>
-    </Grid>
-
-    <CheckBox x:Name="ChkIncludeMembers" Grid.Row="8" Content="Include members from source"
-              Margin="0,0,0,10" Visibility="Collapsed"/>
-    <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
-      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
-    </StackPanel>
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource DlgBtn}"        Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOk"     Content="OK"     Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>
-'@
+"@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
         $w = [System.Windows.Markup.XamlReader]::Load($reader)
         $w.Title = $Title
         $w.Owner = $window
+        $w.FindName('DlgTitle').Text = $Title
 
         $UIDlg = @{}
         foreach ($n in @('LblName','TxtName','TxtDesc',
@@ -1116,61 +1391,85 @@
             [bool]$ParentReadOnly       = $false,
             [bool]$ShowCmdlets          = $false
         )
-        $xaml = @'
+        $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="600" Height="640" WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize">
-  <Grid Margin="14">
+        Title="" Width="620" Height="660" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="CanResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="120"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
-    <TextBlock Grid.Row="2" Text="Parent role (built-in or custom)" FontWeight="SemiBold"/>
-    <ComboBox x:Name="TxtParent" Grid.Row="3" Height="26" Margin="0,4,0,10"
-              IsEditable="True" StaysOpenOnEdit="True"
-              ToolTip="Type to search or pick from the list of existing management roles."/>
-    <TextBlock Grid.Row="4" Text="Description" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtDesc" Grid.Row="5" Margin="0,4,0,10"
-              AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
 
-    <!-- Cmdlets editor (only shown when editing) -->
-    <TextBlock x:Name="LblCmdlets" Grid.Row="6" Text="Cmdlets" FontWeight="SemiBold"
-               Margin="0,4,0,4" Visibility="Collapsed"/>
-    <Grid x:Name="GrdCmdlets" Grid.Row="7" Margin="0,0,0,10" Visibility="Collapsed">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/>
-        <RowDefinition Height="*"/>
-      </Grid.RowDefinitions>
-      <Grid Grid.Row="0" Margin="0,0,0,4">
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <ComboBox x:Name="CmbCmdletAdd" Grid.Column="0" Height="28" IsEditable="True"
-                  StaysOpenOnEdit="True"
-                  ToolTip="Pick from available Exchange Online cmdlets or type a name"/>
-        <Button   x:Name="BtnCmdletAdd"    Grid.Column="1" Content="Add"    Width="80" Height="28" Margin="6,0,0,0"/>
-        <Button   x:Name="BtnCmdletRemove" Grid.Column="2" Content="Remove" Width="80" Height="28" Margin="6,0,0,0"/>
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Pick a parent role and (optionally) trim its cmdlet set."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="20,16">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="120"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtName" Grid.Row="1" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="2" Text="Parent role (built-in or custom)" Style="{StaticResource DlgLabel}"/>
+        <ComboBox x:Name="TxtParent" Grid.Row="3" Style="{StaticResource DlgComboBox}" Margin="0,0,0,12"
+                  IsEditable="True" StaysOpenOnEdit="True"
+                  ToolTip="Type to search or pick from the list of existing management roles."/>
+
+        <TextBlock Grid.Row="4" Text="Description" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtDesc" Grid.Row="5" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"
+                  AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+
+        <!-- Cmdlets editor (only shown when editing) -->
+        <TextBlock x:Name="LblCmdlets" Grid.Row="6" Text="Cmdlets" Style="{StaticResource DlgLabel}"
+                   Visibility="Collapsed"/>
+        <Grid x:Name="GrdCmdlets" Grid.Row="7" Visibility="Collapsed">
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <Grid Grid.Row="0" Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="CmbCmdletAdd" Grid.Column="0" Style="{StaticResource DlgComboBox}" IsEditable="True"
+                      StaysOpenOnEdit="True"
+                      ToolTip="Pick from available Exchange Online cmdlets or type a name"/>
+            <Button   x:Name="BtnCmdletAdd"    Grid.Column="1" Content="Add"    Style="{StaticResource DlgBtn}" Margin="6,0,0,0"/>
+            <Button   x:Name="BtnCmdletRemove" Grid.Column="2" Content="Remove" Style="{StaticResource DlgBtn}" Margin="6,0,0,0"/>
+          </Grid>
+          <ListBox x:Name="LstCmdlets" Grid.Row="1" Style="{StaticResource DlgListBox}"
+                   SelectionMode="Extended" FontFamily="Consolas"/>
+        </Grid>
       </Grid>
-      <ListBox x:Name="LstCmdlets" Grid.Row="1" SelectionMode="Extended" FontFamily="Consolas" FontSize="12"/>
-    </Grid>
+    </Border>
 
-    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
-      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
-    </StackPanel>
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource DlgBtn}"        Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOk"     Content="OK"     Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>
-'@
+"@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
         $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
+        $w.FindName('DlgTitle').Text = $Title
         $UIDlg = @{}
         foreach ($n in @('TxtName','TxtParent','TxtDesc',
                          'LblCmdlets','GrdCmdlets','CmbCmdletAdd','BtnCmdletAdd','BtnCmdletRemove','LstCmdlets',
@@ -1265,48 +1564,75 @@
             [string]$DefaultRecipientOrganizationalUnitScope = '',
             [string]$DefaultCustomRecipientWriteScope        = ''
         )
-        $xaml = @'
+        $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="560" Height="500" WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize">
-  <Grid Margin="14">
+        Title="" Width="600" Height="560" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="CanResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock Grid.Row="0" Text="Assignment name" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
-    <TextBlock Grid.Row="2" Text="Role" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtRole" Grid.Row="3" Height="26" Margin="0,4,0,10"/>
-    <TextBlock Grid.Row="4" Text="Assignee kind" FontWeight="SemiBold"/>
-    <ComboBox x:Name="CmbKind" Grid.Row="5" Margin="0,4,0,10" Height="26">
-      <ComboBoxItem Content="SecurityGroup"/>
-      <ComboBoxItem Content="User"/>
-      <ComboBoxItem Content="Computer"/>
-      <ComboBoxItem Content="Policy"/>
-      <ComboBoxItem Content="App"/>
-    </ComboBox>
-    <TextBlock Grid.Row="6" Text="Assignee (UPN, alias or DN)" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtAssignee" Grid.Row="7" Height="26" Margin="0,4,0,10"/>
-    <TextBlock Grid.Row="8" Text="Optional: RecipientOrganizationalUnitScope (DN)" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtOuScope" Grid.Row="9" Height="26" Margin="0,4,0,10"/>
-    <TextBlock Grid.Row="10" Text="Optional: CustomRecipientWriteScope (existing scope name)" FontWeight="SemiBold" VerticalAlignment="Top"/>
-    <TextBox  x:Name="TxtCustomScope" Grid.Row="10" Height="26" Margin="0,18,0,10" VerticalAlignment="Top"/>
-    <StackPanel Grid.Row="11" Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
-      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
-    </StackPanel>
+
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Bind a role to an assignee, optionally restricted by a recipient scope."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="20,16">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="Assignment name" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtName" Grid.Row="1" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="2" Text="Role" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtRole" Grid.Row="3" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="4" Text="Assignee kind" Style="{StaticResource DlgLabel}"/>
+        <ComboBox x:Name="CmbKind" Grid.Row="5" Style="{StaticResource DlgComboBox}" Margin="0,0,0,12">
+          <ComboBoxItem Content="SecurityGroup"/>
+          <ComboBoxItem Content="User"/>
+          <ComboBoxItem Content="Computer"/>
+          <ComboBoxItem Content="Policy"/>
+          <ComboBoxItem Content="App"/>
+        </ComboBox>
+
+        <TextBlock Grid.Row="6" Text="Assignee (UPN, alias or DN)" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtAssignee" Grid.Row="7" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="8" Text="Optional · RecipientOrganizationalUnitScope (DN)" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtOuScope" Grid.Row="9" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock Grid.Row="10" Text="Optional · CustomRecipientWriteScope (existing scope name)" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtCustomScope" Grid.Row="11" Style="{StaticResource DlgTextBox}"/>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource DlgBtn}"        Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOk"     Content="OK"     Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>
-'@
+"@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
         $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
+        $w.FindName('DlgTitle').Text = $Title
         $UIDlg = @{}
         foreach ($n in @('TxtName','TxtRole','CmbKind','TxtAssignee','TxtOuScope','TxtCustomScope','BtnOk','BtnCancel')) {
             $UIDlg[$n] = $w.FindName($n)
@@ -1358,38 +1684,63 @@
             [bool]$NameReadOnly      = $false,
             [bool]$ShowNewName       = $false
         )
-        $xaml = @'
+        $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="560" Height="420" WindowStartupLocation="CenterOwner"
-        ResizeMode="CanResize">
-  <Grid Margin="14">
+        Title="" Width="600" Height="500" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="CanResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
-    <TextBlock x:Name="LblNewName" Grid.Row="2" Text="New name (rename)" FontWeight="SemiBold" Visibility="Collapsed"/>
-    <TextBox  x:Name="TxtNewName" Grid.Row="3" Height="26" Margin="0,4,0,10" Visibility="Collapsed"/>
-    <TextBlock Grid.Row="4" Text="Recipient root (OU DN, optional)" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtRoot" Grid.Row="5" Height="26" Margin="0,4,0,10" FontFamily="Consolas"/>
-    <TextBlock Grid.Row="6" Text="Recipient restriction filter (OPATH, optional)" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtFilter" Grid.Row="7" Margin="0,4,0,10"
-              AcceptsReturn="True" TextWrapping="Wrap"
-              VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
-    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
-      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
-      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
-    </StackPanel>
+
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Restrict where a role applies — by OU, by recipient filter, or both."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="20,16">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Text="Name" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtName" Grid.Row="1" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12"/>
+
+        <TextBlock x:Name="LblNewName" Grid.Row="2" Text="New name (rename)" Style="{StaticResource DlgLabel}" Visibility="Collapsed"/>
+        <TextBox  x:Name="TxtNewName" Grid.Row="3" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12" Visibility="Collapsed"/>
+
+        <TextBlock Grid.Row="4" Text="Recipient root (OU DN, optional)" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtRoot" Grid.Row="5" Style="{StaticResource DlgTextBox}" Margin="0,0,0,12" FontFamily="Consolas"/>
+
+        <TextBlock Grid.Row="6" Text="Recipient restriction filter (OPATH, optional)" Style="{StaticResource DlgLabel}"/>
+        <TextBox  x:Name="TxtFilter" Grid.Row="7" Style="{StaticResource DlgTextBox}"
+                  AcceptsReturn="True" TextWrapping="Wrap"
+                  VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource DlgBtn}"        Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOk"     Content="OK"     Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>
-'@
+"@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
         $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
+        $w.FindName('DlgTitle').Text = $Title
         $UIDlg = @{}
         foreach ($n in @('TxtName','LblNewName','TxtNewName','TxtRoot','TxtFilter','BtnOk','BtnCancel')) {
             $UIDlg[$n] = $w.FindName($n)
@@ -2016,8 +2367,8 @@
         }
 
         $a = $script:VizAssignment
-        if (-not $a) { $UI.VizPlaceholder.Visibility = 'Visible'; return }
-        $UI.VizPlaceholder.Visibility = 'Collapsed'
+        if (-not $a) { $UI.VizPlaceholderBox.Visibility = 'Visible'; return }
+        $UI.VizPlaceholderBox.Visibility = 'Collapsed'
 
         # -- Initial layout dimensions -------------------------------------
         $baseW = 1000; $baseH = 600
@@ -2663,20 +3014,23 @@
         $defaultChip = if ($cfg.Chips -and $cfg.Chips.Count -gt 0) { $cfg.Chips[0] } else { '' }
         Set-Chips -Labels $cfg.Chips -ActiveLabel $defaultChip
         $UI.ItemCount.Text = '0 items'
-        $UI.SelectionCount.Text = '0 selected'
+        $UI.FloatingCount.Text = '0'
+        $UI.FloatingActions.Visibility = 'Collapsed'
         Hide-Details
 
-        # Switch table vs visualizer
+        # Switch table vs visualizer. Filter/Wrap/Auto-fit only apply to the DataGrid,
+        # so they're hidden in views without one (Visualizer for now).
         if ($View -eq 'Visualizer') {
-            $UI.MainGrid.Visibility   = 'Collapsed'
-            $UI.VizHost.Visibility    = 'Visible'
-            # SearchBox has no effect on the canvas; hide it to avoid confusion.
-            $UI.SearchHost.Visibility = 'Collapsed'
+            $UI.MainGrid.Visibility      = 'Collapsed'
+            $UI.VizHost.Visibility       = 'Visible'
+            $UI.SearchHost.Visibility    = 'Collapsed'
+            $UI.GridModifiers.Visibility = 'Collapsed'
         }
         else {
-            $UI.VizHost.Visibility    = 'Collapsed'
-            $UI.MainGrid.Visibility   = 'Visible'
-            $UI.SearchHost.Visibility = 'Visible'
+            $UI.VizHost.Visibility       = 'Collapsed'
+            $UI.MainGrid.Visibility      = 'Visible'
+            $UI.SearchHost.Visibility    = 'Visible'
+            $UI.GridModifiers.Visibility = 'Visible'
             Set-GridColumns -Columns $cfg.Columns
         }
 
@@ -2691,62 +3045,72 @@
 
     function Get-ActionsForView {
         param([string]$View)
-        # Slot convention:
-        #   Left  → primary + neutral CRUD (New, Edit, Copy, Visualize, Lookup, Pick…)
-        #   Mid   → destructive (Delete) — visually isolated from neutral actions
-        #   Right → secondary, never-destructive (Export CSV/PNG)
+        # Kind convention:
+        #   Primary     → top-right of the toolbar (signature action: + New, Lookup, Pick…)
+        #   Tool        → top toolbar, view-level (Refresh, Export, audit timeframes…)
+        #   Selection   → floating bottom bar (only when a row is selected: Edit, Copy, Visualize…)
+        #   Destructive → floating bottom bar, isolated zone (Delete)
         $list = [System.Collections.Generic.List[pscustomobject]]::new()
         switch ($View) {
             'RoleGroups' {
-                $null = $list.Add((New-ActionButton -Label '+ New'         -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewRoleGroup }))
-                $null = $list.Add((New-ActionButton -Label 'Edit'          -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-EditRoleGroup }))
-                $null = $list.Add((New-ActionButton -Label 'Copy'          -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-CopyRoleGroup }))
-                $null = $list.Add((New-ActionButton -Label '🗑  Delete'    -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteRoleGroup }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '+ New Role Group' -Style 'PrimaryBtn' -Kind 'Primary'     -OnClick { Do-NewRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label '⟳  Refresh'       -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Reload-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'       -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'             -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label 'Copy'             -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-CopyRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'       -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteRoleGroup }))
             }
             'Roles' {
-                $null = $list.Add((New-ActionButton -Label '+ New (from parent)' -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewRole }))
-                $null = $list.Add((New-ActionButton -Label 'Edit'                -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-EditRole }))
-                $null = $list.Add((New-ActionButton -Label 'Copy'                -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-CopyRole }))
-                $null = $list.Add((New-ActionButton -Label '🗑  Delete'          -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteRole }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV'       -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '+ New Role'  -Style 'PrimaryBtn' -Kind 'Primary'     -OnClick { Do-NewRole }))
+                $null = $list.Add((New-ActionButton -Label '⟳  Refresh'  -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Reload-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'  -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'        -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditRole }))
+                $null = $list.Add((New-ActionButton -Label 'Copy'        -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-CopyRole }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'  -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteRole }))
             }
             'Assignments' {
-                $null = $list.Add((New-ActionButton -Label '+ New'         -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewAssignment }))
-                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Visualize-Selected }))
-                $null = $list.Add((New-ActionButton -Label '🗑  Delete'    -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteAssignment }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '+ New Assignment' -Style 'PrimaryBtn' -Kind 'Primary'     -OnClick { Do-NewAssignment }))
+                $null = $list.Add((New-ActionButton -Label '⟳  Refresh'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Reload-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize'   -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Selected }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'      -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteAssignment }))
             }
             'Scopes' {
-                $null = $list.Add((New-ActionButton -Label '+ New'         -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewScope }))
-                $null = $list.Add((New-ActionButton -Label 'Edit'          -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-EditScope }))
-                $null = $list.Add((New-ActionButton -Label '🗑  Delete'    -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteScope }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '+ New Scope'      -Style 'PrimaryBtn' -Kind 'Primary'     -OnClick { Do-NewScope }))
+                $null = $list.Add((New-ActionButton -Label '⟳  Refresh'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Reload-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'            -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditScope }))
+                $null = $list.Add((New-ActionButton -Label 'Preview members' -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Preview-ScopeMembers }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'      -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteScope }))
             }
             'UserRights' {
-                $null = $list.Add((New-ActionButton -Label 'Lookup'        -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Apply-Search }))
-                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Visualize-Selected }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Lookup'       -Style 'PrimaryBtn' -Kind 'Primary'   -OnClick { Apply-Search }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'   -Style 'ActionBtn'  -Kind 'Tool'      -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'BtnDark'   -Kind 'Selection' -OnClick { Visualize-Selected }))
             }
             'Commands' {
-                $null = $list.Add((New-ActionButton -Label 'Lookup'        -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Apply-Search }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Lookup'     -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Apply-Search }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV' -Style 'ActionBtn'  -Kind 'Tool'    -OnClick { Export-CurrentView }))
             }
             'Visualizer' {
-                $null = $list.Add((New-ActionButton -Label 'Pick assignment…' -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Pick-VizAssignment }))
-                $null = $list.Add((New-ActionButton -Label '➕ Zoom in'        -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Zoom-Viz 1.2 }))
-                $null = $list.Add((New-ActionButton -Label '➖ Zoom out'       -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Zoom-Viz (1 / 1.2) }))
-                $null = $list.Add((New-ActionButton -Label '⌖ Center'         -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Reset-VizTransform; Render-Visualizer }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export PNG'    -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-VizPng }))
+                $null = $list.Add((New-ActionButton -Label 'Pick assignment…' -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Pick-VizAssignment }))
+                $null = $list.Add((New-ActionButton -Label '➕ Zoom in'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz 1.2 }))
+                $null = $list.Add((New-ActionButton -Label '➖ Zoom out' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz (1 / 1.2) }))
+                $null = $list.Add((New-ActionButton -Label '⌖ Center'   -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Reset-VizTransform; Render-Visualizer }))
+                $null = $list.Add((New-ActionButton -Label 'Export PNG' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizPng }))
             }
             'Audit' {
-                $null = $list.Add((New-ActionButton -Label '⟳ 7 days'      -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Load-Audit -Days 7 }))
-                $null = $list.Add((New-ActionButton -Label '⟳ 30 days'     -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Load-Audit -Days 30 }))
-                $null = $list.Add((New-ActionButton -Label '⟳ 90 days'     -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Load-Audit -Days 90 }))
-                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '⟳ 7 days'   -Style 'ActionBtn' -Kind 'Tool' -OnClick { Load-Audit -Days 7 }))
+                $null = $list.Add((New-ActionButton -Label '⟳ 30 days'  -Style 'ActionBtn' -Kind 'Tool' -OnClick { Load-Audit -Days 30 }))
+                $null = $list.Add((New-ActionButton -Label '⟳ 90 days'  -Style 'ActionBtn' -Kind 'Tool' -OnClick { Load-Audit -Days 90 }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Export-CurrentView }))
             }
         }
         return $list
+    }
+
+    function Reload-CurrentView {
+        if ($script:CurrentView) { Load-ViewData -View $script:CurrentView }
     }
 
     # ---------------- Action implementations ----------------
@@ -3081,6 +3445,140 @@
         if ($ok) { Load-ViewData -View 'Scopes' }
     }
 
+    function Preview-ScopeMembers {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a scope first.' 'warn'; return }
+        $filter = "$($sel.RecipientFilter)".Trim()
+        $root   = "$($sel.RecipientRoot)".Trim()
+        if (-not $filter -and -not $root) {
+            Set-Status "Scope '$($sel.Name)' has neither a RecipientFilter nor a RecipientRoot — nothing to preview." 'warn'
+            return
+        }
+
+        Set-Status "Resolving recipients matching scope '$($sel.Name)'…"
+        try {
+            $recipientArgs = @{ ResultSize = 'Unlimited'; ErrorAction = 'Stop' }
+            if ($filter) { $recipientArgs.RecipientPreviewFilter = $filter }
+            if ($root)   { $recipientArgs.OrganizationalUnit     = $root }
+            $recipients = @(Get-Recipient @recipientArgs |
+                Select-Object Name, RecipientTypeDetails, PrimarySmtpAddress, OrganizationalUnit)
+        }
+        catch {
+            Set-Status "Preview failed: $($_.Exception.Message)" 'error'
+            return
+        }
+
+        Set-Status "$($recipients.Count) recipient(s) match scope '$($sel.Name)'." 'ok'
+        Show-ScopePreview -Scope $sel -Recipients $recipients
+    }
+
+    function Show-ScopePreview {
+        param(
+            [Parameter(Mandatory)] $Scope,
+            [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Recipients
+        )
+        $xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Width="820" Height="560" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="CanResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock x:Name="DlgSub"  FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,12">
+      <StackPanel>
+        <TextBlock Text="RecipientFilter" Style="{StaticResource DlgLabel}"/>
+        <TextBox x:Name="FilterText" Style="{StaticResource DlgTextBox}" IsReadOnly="True"
+                 FontFamily="Consolas" TextWrapping="Wrap" AcceptsReturn="True"
+                 MaxHeight="80" VerticalScrollBarVisibility="Auto"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="2" Padding="20,16">
+      <Grid>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+          <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="Auto"/>
+          </Grid.ColumnDefinitions>
+          <TextBlock Grid.Column="0" Text="Matching recipients" Style="{StaticResource DlgLabel}" Margin="0"/>
+          <Border Grid.Column="2" CornerRadius="10" Padding="10,3" Background="#EFEDEB">
+            <TextBlock x:Name="CountText" FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
+          </Border>
+        </Grid>
+        <ListView x:Name="RecipientsList" Grid.Row="1" Background="White"
+                  BorderBrush="#C8C6C4" BorderThickness="1" SelectionMode="Single">
+          <ListView.View>
+            <GridView>
+              <GridViewColumn Header="Name"          Width="220" DisplayMemberBinding="{Binding Name}"/>
+              <GridViewColumn Header="Type"          Width="160" DisplayMemberBinding="{Binding RecipientTypeDetails}"/>
+              <GridViewColumn Header="Primary SMTP"  Width="220" DisplayMemberBinding="{Binding PrimarySmtpAddress}"/>
+              <GridViewColumn Header="OU"            Width="180" DisplayMemberBinding="{Binding OrganizationalUnit}"/>
+            </GridView>
+          </ListView.View>
+        </ListView>
+      </Grid>
+    </Border>
+
+    <Border Grid.Row="3" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Button x:Name="BtnExport" Grid.Column="0" Content="Export CSV" Style="{StaticResource DlgBtn}"
+                HorizontalAlignment="Left"/>
+        <Button x:Name="BtnClose"  Grid.Column="1" Content="Close" Style="{StaticResource DlgBtnPrimary}"
+                IsDefault="True" IsCancel="True"/>
+      </Grid>
+    </Border>
+  </Grid>
+</Window>
+"@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
+        $w = [System.Windows.Markup.XamlReader]::Load($reader)
+        $w.Title = "Scope preview — $($Scope.Name)"
+        $w.Owner = $window
+        $w.FindName('DlgTitle').Text   = "Scope preview — $($Scope.Name)"
+        $w.FindName('DlgSub').Text     = if ($Scope.RecipientRoot) { "Restricted to OU: $($Scope.RecipientRoot)" } else { "Organization-wide" }
+        $w.FindName('FilterText').Text = if ($Scope.RecipientFilter) { [string]$Scope.RecipientFilter } else { '(no filter)' }
+        $w.FindName('CountText').Text  = "$($Recipients.Count) items"
+        $list = $w.FindName('RecipientsList')
+        $list.ItemsSource = $Recipients
+
+        $w.FindName('BtnExport').Add_Click({
+            $dlg = [System.Windows.Forms.SaveFileDialog]::new()
+            $dlg.Filter   = 'CSV (*.csv)|*.csv'
+            $dlg.FileName = "scope-preview-$($Scope.Name)-$(Get-Date -Format 'yyyyMMdd-HHmmss').csv"
+            if ($dlg.ShowDialog() -eq 'OK') {
+                $Recipients | Export-Csv -Path $dlg.FileName -NoTypeInformation -Encoding UTF8
+                Set-Status "Exported scope preview to $($dlg.FileName)." 'ok'
+            }
+        }.GetNewClosure())
+        $w.FindName('BtnClose').Add_Click({ $w.Close() })
+
+        $null = $w.ShowDialog()
+    }
+
     function Visualize-Selected {
         $sel = $UI.MainGrid.SelectedItem
         if (-not $sel) { Set-Status 'Select an assignment first.' 'warn'; return }
@@ -3107,56 +3605,73 @@
             }
         }
 
-        $dlgXaml = @'
+        $dlgXaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Pick assignment to visualize"
-        Width="780" Height="540" WindowStartupLocation="CenterOwner"
-        FontFamily="Segoe UI" Background="#FAF9F8" ShowInTaskbar="False">
-  <Grid Margin="14">
+        Width="820" Height="560" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
     <Grid.RowDefinitions>
-      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock Grid.Row="0" Text="Pick a role assignment" FontSize="18" FontWeight="SemiBold" Foreground="#201F1E"/>
-    <Border Grid.Row="1" Margin="0,12,0,8" Padding="8,4" Background="White"
-            BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2" Height="32">
+
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock Text="Pick a role assignment" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Choose the assignment to visualize as a hub-and-spoke graph."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+      </StackPanel>
+    </Border>
+
+    <Border Grid.Row="1" Padding="20,16">
       <Grid>
-        <Grid.ColumnDefinitions>
-          <ColumnDefinition Width="Auto"/>
-          <ColumnDefinition Width="*"/>
-          <ColumnDefinition Width="Auto"/>
-        </Grid.ColumnDefinitions>
-        <TextBlock Grid.Column="0" Text="⌕" Margin="2,0,8,0" Foreground="#605E5C" VerticalAlignment="Center"/>
-        <TextBox x:Name="FilterBox" Grid.Column="1" BorderThickness="0" VerticalContentAlignment="Center"
-                 Background="Transparent"/>
-        <TextBlock x:Name="CountText" Grid.Column="2" Margin="8,0,2,0" Foreground="#605E5C"
-                   FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Border Grid.Row="0" Margin="0,0,0,10" Padding="10,4" Background="White"
+                BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="4" Height="34">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="⌕" Margin="2,0,8,0" Foreground="#605E5C" VerticalAlignment="Center"/>
+            <TextBox x:Name="FilterBox" Grid.Column="1" BorderThickness="0" VerticalContentAlignment="Center"
+                     Background="Transparent" FontSize="13"/>
+            <Border Grid.Column="2" CornerRadius="10" Padding="8,2" Background="#EFEDEB" VerticalAlignment="Center">
+              <TextBlock x:Name="CountText" Foreground="#605E5C" FontFamily="Consolas" FontSize="11"/>
+            </Border>
+          </Grid>
+        </Border>
+        <ListView x:Name="List" Grid.Row="1" Background="White"
+                  BorderBrush="#C8C6C4" BorderThickness="1" SelectionMode="Single" FontSize="12">
+          <ListView.View>
+            <GridView>
+              <GridViewColumn Header="Name"     Width="240" DisplayMemberBinding="{Binding Name}"/>
+              <GridViewColumn Header="Role"     Width="160" DisplayMemberBinding="{Binding Role}"/>
+              <GridViewColumn Header="Assignee" Width="180" DisplayMemberBinding="{Binding Assignee}"/>
+              <GridViewColumn Header="Scope"    Width="160" DisplayMemberBinding="{Binding Scope}"/>
+            </GridView>
+          </ListView.View>
+        </ListView>
       </Grid>
     </Border>
-    <ListView x:Name="List" Grid.Row="2" BorderBrush="#E1DFDD" BorderThickness="1" Background="White"
-              SelectionMode="Single">
-      <ListView.View>
-        <GridView>
-          <GridViewColumn Header="Name"     Width="240" DisplayMemberBinding="{Binding Name}"/>
-          <GridViewColumn Header="Role"     Width="160" DisplayMemberBinding="{Binding Role}"/>
-          <GridViewColumn Header="Assignee" Width="180" DisplayMemberBinding="{Binding Assignee}"/>
-          <GridViewColumn Header="Scope"    Width="160" DisplayMemberBinding="{Binding Scope}"/>
-        </GridView>
-      </ListView.View>
-    </ListView>
-    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
-      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="32" Margin="0,0,8,0"
-              Background="White" BorderBrush="#C8C6C4" BorderThickness="1" Foreground="#201F1E" Cursor="Hand"/>
-      <Button x:Name="BtnOK" Content="Visualize" Width="110" Height="32"
-              Background="#0078D4" BorderBrush="#0078D4" BorderThickness="1" Foreground="White"
-              FontWeight="SemiBold" Cursor="Hand" IsDefault="True"/>
-    </StackPanel>
+
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel"    Style="{StaticResource DlgBtn}" Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOK"     Content="Visualize" Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
   </Grid>
 </Window>
-'@
+"@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($dlgXaml))
         $dlg    = [System.Windows.Markup.XamlReader]::Load($reader)
         $dlg.Owner = $window
@@ -3267,10 +3782,10 @@
     # ---------------- Wire events ----------------
     $UI.BtnConnect.Add_Click({ Do-Connect })
     $UI.BtnDisconnect.Add_Click({ Do-Disconnect })
-    $UI.BtnRefresh.Add_Click({ if ($script:CurrentView) { Load-ViewData -View $script:CurrentView } })
     $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
     $UI.BtnWrap.Add_Click({ Toggle-Wrap })
     $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
+    $UI.FloatingClose.Add_Click({ $UI.MainGrid.UnselectAll() })
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
     $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
@@ -3377,7 +3892,15 @@
         $UI.SuggestPopup.IsOpen = $true
     }
 
-    $UI.SearchBox.Add_TextChanged({ Update-SuggestPopup })
+    $UI.SearchBox.Add_TextChanged({
+        Update-SuggestPopup
+        # Real-time filtering for cache-backed views. Lookup views (UserRights, Commands)
+        # need an explicit submit because the query hits Exchange Online.
+        $lookupViews = @('UserRights','Commands')
+        if ($script:CurrentView -and ($lookupViews -notcontains $script:CurrentView)) {
+            Schedule-FilterApply
+        }
+    })
     $UI.SearchBox.Add_LostFocus({
         if (-not $UI.SuggestPopup) { return }
         # Defer close so a click on the suggestion list isn't swallowed.
@@ -3400,7 +3923,8 @@
 
     $UI.MainGrid.Add_SelectionChanged({
         $n = @($UI.MainGrid.SelectedItems).Count
-        $UI.SelectionCount.Text = "$n selected"
+        $UI.FloatingCount.Text = "$n"
+        $UI.FloatingActions.Visibility = if ($n -gt 0) { 'Visible' } else { 'Collapsed' }
         if ($n -eq 1) { Show-Details -Item $UI.MainGrid.SelectedItem } else { Hide-Details }
     })
     $UI.BtnDetailsClose.Add_Click({ Hide-Details })
