@@ -741,6 +741,244 @@
         return $null
     }
 
+    function Show-RoleForm {
+        param(
+            [string]$Title              = 'New management role',
+            [string]$DefaultName        = '',
+            [string]$DefaultParent      = '',
+            [string]$DefaultDescription = '',
+            [bool]$NameReadOnly         = $false,
+            [bool]$ParentReadOnly       = $false
+        )
+        $xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Width="520" Height="360" WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <TextBlock Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
+    <TextBlock Grid.Row="2" Text="Parent role (built-in or custom)" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtParent" Grid.Row="3" Height="26" Margin="0,4,0,10"/>
+    <TextBlock Grid.Row="4" Text="Description" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtDesc" Grid.Row="5" Margin="0,4,0,10"
+              AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
+    <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
+      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
+    </StackPanel>
+  </Grid>
+</Window>
+'@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
+        $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
+        $UIDlg = @{}
+        foreach ($n in @('TxtName','TxtParent','TxtDesc','BtnOk','BtnCancel')) { $UIDlg[$n] = $w.FindName($n) }
+        $UIDlg.TxtName.Text   = $DefaultName
+        $UIDlg.TxtParent.Text = $DefaultParent
+        $UIDlg.TxtDesc.Text   = $DefaultDescription
+        $UIDlg.TxtName.IsReadOnly   = $NameReadOnly
+        $UIDlg.TxtParent.IsReadOnly = $ParentReadOnly
+
+        $script:_FormResult = $null
+        $UIDlg.BtnOk.Add_Click({
+            $name   = "$($UIDlg.TxtName.Text)".Trim()
+            $parent = "$($UIDlg.TxtParent.Text)".Trim()
+            if (-not $name) {
+                [System.Windows.MessageBox]::Show('Name is required.', 'Missing field',
+                    [System.Windows.MessageBoxButton]::OK,
+                    [System.Windows.MessageBoxImage]::Warning) | Out-Null
+                return
+            }
+            $script:_FormResult = [pscustomobject]@{
+                Name        = $name
+                Parent      = $parent
+                Description = "$($UIDlg.TxtDesc.Text)".Trim()
+            }
+            $w.DialogResult = $true; $w.Close()
+        })
+        $UIDlg.BtnCancel.Add_Click({ $w.DialogResult = $false; $w.Close() })
+        if ($w.ShowDialog()) { return $script:_FormResult }
+        return $null
+    }
+
+    function Show-AssignmentForm {
+        param(
+            [string]$Title          = 'New role assignment',
+            [string]$DefaultName    = '',
+            [string]$DefaultRole    = '',
+            [string]$DefaultAssigneeKind = 'SecurityGroup',
+            [string]$DefaultAssignee     = '',
+            [string]$DefaultRecipientOrganizationalUnitScope = '',
+            [string]$DefaultCustomRecipientWriteScope        = ''
+        )
+        $xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Width="560" Height="500" WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <TextBlock Grid.Row="0" Text="Assignment name" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
+    <TextBlock Grid.Row="2" Text="Role" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtRole" Grid.Row="3" Height="26" Margin="0,4,0,10"/>
+    <TextBlock Grid.Row="4" Text="Assignee kind" FontWeight="SemiBold"/>
+    <ComboBox x:Name="CmbKind" Grid.Row="5" Margin="0,4,0,10" Height="26">
+      <ComboBoxItem Content="SecurityGroup"/>
+      <ComboBoxItem Content="User"/>
+      <ComboBoxItem Content="Computer"/>
+      <ComboBoxItem Content="Policy"/>
+      <ComboBoxItem Content="App"/>
+    </ComboBox>
+    <TextBlock Grid.Row="6" Text="Assignee (UPN, alias or DN)" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtAssignee" Grid.Row="7" Height="26" Margin="0,4,0,10"/>
+    <TextBlock Grid.Row="8" Text="Optional: RecipientOrganizationalUnitScope (DN)" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtOuScope" Grid.Row="9" Height="26" Margin="0,4,0,10"/>
+    <TextBlock Grid.Row="10" Text="Optional: CustomRecipientWriteScope (existing scope name)" FontWeight="SemiBold" VerticalAlignment="Top"/>
+    <TextBox  x:Name="TxtCustomScope" Grid.Row="10" Height="26" Margin="0,18,0,10" VerticalAlignment="Top"/>
+    <StackPanel Grid.Row="11" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
+      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
+    </StackPanel>
+  </Grid>
+</Window>
+'@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
+        $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
+        $UIDlg = @{}
+        foreach ($n in @('TxtName','TxtRole','CmbKind','TxtAssignee','TxtOuScope','TxtCustomScope','BtnOk','BtnCancel')) {
+            $UIDlg[$n] = $w.FindName($n)
+        }
+        $UIDlg.TxtName.Text     = $DefaultName
+        $UIDlg.TxtRole.Text     = $DefaultRole
+        $UIDlg.TxtAssignee.Text = $DefaultAssignee
+        $UIDlg.TxtOuScope.Text  = $DefaultRecipientOrganizationalUnitScope
+        $UIDlg.TxtCustomScope.Text = $DefaultCustomRecipientWriteScope
+        foreach ($it in $UIDlg.CmbKind.Items) {
+            if ($it.Content -eq $DefaultAssigneeKind) { $UIDlg.CmbKind.SelectedItem = $it; break }
+        }
+        if (-not $UIDlg.CmbKind.SelectedItem) { $UIDlg.CmbKind.SelectedIndex = 0 }
+
+        $script:_FormResult = $null
+        $UIDlg.BtnOk.Add_Click({
+            $name      = "$($UIDlg.TxtName.Text)".Trim()
+            $role      = "$($UIDlg.TxtRole.Text)".Trim()
+            $assignee  = "$($UIDlg.TxtAssignee.Text)".Trim()
+            $kind      = "$($UIDlg.CmbKind.SelectedItem.Content)"
+            if (-not $name -or -not $role -or -not $assignee) {
+                [System.Windows.MessageBox]::Show('Name, Role and Assignee are required.', 'Missing field',
+                    [System.Windows.MessageBoxButton]::OK,
+                    [System.Windows.MessageBoxImage]::Warning) | Out-Null
+                return
+            }
+            $script:_FormResult = [pscustomobject]@{
+                Name         = $name
+                Role         = $role
+                AssigneeKind = $kind
+                Assignee     = $assignee
+                RecipientOrganizationalUnitScope = "$($UIDlg.TxtOuScope.Text)".Trim()
+                CustomRecipientWriteScope        = "$($UIDlg.TxtCustomScope.Text)".Trim()
+            }
+            $w.DialogResult = $true; $w.Close()
+        })
+        $UIDlg.BtnCancel.Add_Click({ $w.DialogResult = $false; $w.Close() })
+        if ($w.ShowDialog()) { return $script:_FormResult }
+        return $null
+    }
+
+    function Show-ScopeForm {
+        param(
+            [string]$Title           = 'New management scope',
+            [string]$DefaultName     = '',
+            [string]$DefaultNewName  = '',
+            [string]$DefaultRoot     = '',
+            [string]$DefaultFilter   = '',
+            [bool]$NameReadOnly      = $false,
+            [bool]$ShowNewName       = $false
+        )
+        $xaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Width="560" Height="420" WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <TextBlock Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
+    <TextBlock x:Name="LblNewName" Grid.Row="2" Text="New name (rename)" FontWeight="SemiBold" Visibility="Collapsed"/>
+    <TextBox  x:Name="TxtNewName" Grid.Row="3" Height="26" Margin="0,4,0,10" Visibility="Collapsed"/>
+    <TextBlock Grid.Row="4" Text="Recipient root (OU DN, optional)" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtRoot" Grid.Row="5" Height="26" Margin="0,4,0,10" FontFamily="Consolas"/>
+    <TextBlock Grid.Row="6" Text="Recipient restriction filter (OPATH, optional)" FontWeight="SemiBold"/>
+    <TextBox  x:Name="TxtFilter" Grid.Row="7" Margin="0,4,0,10"
+              AcceptsReturn="True" TextWrapping="Wrap"
+              VerticalScrollBarVisibility="Auto" FontFamily="Consolas"/>
+    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
+      <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
+      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
+    </StackPanel>
+  </Grid>
+</Window>
+'@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
+        $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
+        $UIDlg = @{}
+        foreach ($n in @('TxtName','LblNewName','TxtNewName','TxtRoot','TxtFilter','BtnOk','BtnCancel')) {
+            $UIDlg[$n] = $w.FindName($n)
+        }
+        $UIDlg.TxtName.Text   = $DefaultName
+        $UIDlg.TxtName.IsReadOnly = $NameReadOnly
+        $UIDlg.TxtRoot.Text   = $DefaultRoot
+        $UIDlg.TxtFilter.Text = $DefaultFilter
+        if ($ShowNewName) {
+            $UIDlg.LblNewName.Visibility = 'Visible'
+            $UIDlg.TxtNewName.Visibility = 'Visible'
+            $UIDlg.TxtNewName.Text = $DefaultNewName
+        }
+
+        $script:_FormResult = $null
+        $UIDlg.BtnOk.Add_Click({
+            $name = "$($UIDlg.TxtName.Text)".Trim()
+            if (-not $name) {
+                [System.Windows.MessageBox]::Show('Name is required.', 'Missing field',
+                    [System.Windows.MessageBoxButton]::OK,
+                    [System.Windows.MessageBoxImage]::Warning) | Out-Null
+                return
+            }
+            $script:_FormResult = [pscustomobject]@{
+                Name        = $name
+                NewName     = "$($UIDlg.TxtNewName.Text)".Trim()
+                Root        = "$($UIDlg.TxtRoot.Text)".Trim()
+                Filter      = "$($UIDlg.TxtFilter.Text)".Trim()
+            }
+            $w.DialogResult = $true; $w.Close()
+        })
+        $UIDlg.BtnCancel.Add_Click({ $w.DialogResult = $false; $w.Close() })
+        if ($w.ShowDialog()) { return $script:_FormResult }
+        return $null
+    }
+
     function Handle-WriteResult {
         param(
             [Parameter(Mandatory)] $Result,
@@ -1622,15 +1860,24 @@
                 $list += (New-ActionButton -Label 'Export CSV'        -Style 'ActionBtn'  -OnClick { Export-CurrentView })
             }
             'Roles' {
-                $list += (New-ActionButton -Label 'View Cmdlets'      -Style 'PrimaryBtn' -OnClick { Show-RoleCmdlets })
-                $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $list += (New-ActionButton -Label '+ New (from parent)' -Style 'PrimaryBtn' -OnClick { Do-NewRole })
+                $list += (New-ActionButton -Label 'Edit'                -Style 'ActionBtn'  -OnClick { Do-EditRole })
+                $list += (New-ActionButton -Label 'Copy'                -Style 'ActionBtn'  -OnClick { Do-CopyRole })
+                $list += (New-ActionButton -Label 'Delete'              -Style 'WarnBtn'    -OnClick { Do-DeleteRole })
+                $list += (New-ActionButton -Label 'View Cmdlets'        -Style 'ActionBtn'  -OnClick { Show-RoleCmdlets })
+                $list += (New-ActionButton -Label 'Export CSV'          -Style 'ActionBtn'  -OnClick { Export-CurrentView })
             }
             'Assignments' {
-                $list += (New-ActionButton -Label 'Visualize'         -Style 'PrimaryBtn' -OnClick { Visualize-Selected })
-                $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $list += (New-ActionButton -Label '+ New'             -Style 'PrimaryBtn' -OnClick { Do-NewAssignment })
+                $list += (New-ActionButton -Label 'Delete'            -Style 'WarnBtn'    -OnClick { Do-DeleteAssignment })
+                $list += (New-ActionButton -Label 'Visualize'         -Style 'ActionBtn'  -OnClick { Visualize-Selected })
+                $list += (New-ActionButton -Label 'Export CSV'        -Style 'ActionBtn'  -OnClick { Export-CurrentView })
             }
             'Scopes' {
-                $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn' -OnClick { Export-CurrentView })
+                $list += (New-ActionButton -Label '+ New'             -Style 'PrimaryBtn' -OnClick { Do-NewScope })
+                $list += (New-ActionButton -Label 'Edit'              -Style 'ActionBtn'  -OnClick { Do-EditScope })
+                $list += (New-ActionButton -Label 'Delete'            -Style 'WarnBtn'    -OnClick { Do-DeleteScope })
+                $list += (New-ActionButton -Label 'Export CSV'        -Style 'ActionBtn'  -OnClick { Export-CurrentView })
             }
             'UserRights' {
                 $list += (New-ActionButton -Label 'Lookup'            -Style 'PrimaryBtn' -OnClick { Apply-Search })
@@ -1770,6 +2017,208 @@
         }
         Handle-WriteResult -Result $r -SuccessMsg "Deleted '$($sel.Name)'." -DryRunTitle 'Remove-RoleGroup (dry-run)'
         if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'RoleGroups' }
+    }
+
+    # ---------------- Role write actions ----------------
+    function Do-NewRole {
+        if (-not (Require-Connected)) { return }
+        $form = Show-RoleForm -Title 'New management role (from parent)'
+        if (-not $form) { return }
+        if (-not $form.Parent) {
+            Set-Status 'Parent role is required to create a new role.' 'warn'; return
+        }
+        if ($script:DryRun) {
+            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description -DryRun
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Create role' -Message "Create role '$($form.Name)' as a child of '$($form.Parent)'?")) { return }
+            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Created role '$($form.Name)'." -DryRunTitle 'New-ManagementRole (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+    }
+
+    function Do-EditRole {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a role first.' 'warn'; return }
+        if ($sel.Origin -eq 'Built-in') {
+            Set-Status "Built-in roles can't be edited." 'warn'; return
+        }
+        $form = Show-RoleForm `
+                    -Title              "Edit role: $($sel.Name)" `
+                    -DefaultName        $sel.Name `
+                    -DefaultParent      "$($sel.Parent)" `
+                    -DefaultDescription "$($sel.Description)" `
+                    -NameReadOnly       $true `
+                    -ParentReadOnly     $true
+        if (-not $form) { return }
+        if ($script:DryRun) {
+            $r = Set-RBACRole -Identity $sel.Name -Description $form.Description -DryRun
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Update role' -Message "Update description of role '$($sel.Name)'?")) { return }
+            $r = Set-RBACRole -Identity $sel.Name -Description $form.Description
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Updated role '$($sel.Name)'." -DryRunTitle 'Set-ManagementRole (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+    }
+
+    function Do-CopyRole {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a role to copy.' 'warn'; return }
+        $form = Show-RoleForm `
+                    -Title              "Copy role: $($sel.Name)" `
+                    -DefaultName        ("$($sel.Name) - Copy") `
+                    -DefaultParent      $sel.Name `
+                    -DefaultDescription "$($sel.Description) (copy of $($sel.Name))".Trim() `
+                    -ParentReadOnly     $true
+        if (-not $form) { return }
+        if ($script:DryRun) {
+            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description -DryRun
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Copy role' -Message "Create role '$($form.Name)' from parent '$($form.Parent)'?")) { return }
+            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Copied role to '$($form.Name)'." -DryRunTitle 'New-ManagementRole (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+    }
+
+    function Do-DeleteRole {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a role to delete.' 'warn'; return }
+        if ($sel.Origin -eq 'Built-in') {
+            Set-Status "Built-in roles can't be deleted." 'warn'; return
+        }
+        if ($script:DryRun) {
+            $r = Remove-RBACRole -Identity $sel.Name -DryRun
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Delete role' -Message "Delete role '$($sel.Name)'? Existing assignments referencing it will fail.")) { return }
+            $r = Remove-RBACRole -Identity $sel.Name
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Deleted role '$($sel.Name)'." -DryRunTitle 'Remove-ManagementRole (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+    }
+
+    # ---------------- Assignment write actions ----------------
+    function Do-NewAssignment {
+        if (-not (Require-Connected)) { return }
+        $form = Show-AssignmentForm -Title 'New role assignment'
+        if (-not $form) { return }
+        $callArgs = @{
+            Name         = $form.Name
+            Role         = $form.Role
+            AssigneeKind = $form.AssigneeKind
+            Assignee     = $form.Assignee
+        }
+        if ($form.RecipientOrganizationalUnitScope) { $callArgs.RecipientOrganizationalUnitScope = $form.RecipientOrganizationalUnitScope }
+        if ($form.CustomRecipientWriteScope)        { $callArgs.CustomRecipientWriteScope        = $form.CustomRecipientWriteScope }
+        if ($script:DryRun) {
+            $callArgs.DryRun = $true
+            $r = New-RBACAssignment @callArgs
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Create assignment' -Message "Create assignment '$($form.Name)' on role '$($form.Role)' for $($form.AssigneeKind) '$($form.Assignee)'?")) { return }
+            $r = New-RBACAssignment @callArgs
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Created assignment '$($form.Name)'." -DryRunTitle 'New-ManagementRoleAssignment (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Assignments' }
+    }
+
+    function Do-DeleteAssignment {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select an assignment to delete.' 'warn'; return }
+        if ($script:DryRun) {
+            $r = Remove-RBACAssignment -Identity $sel.Name -DryRun
+        }
+        else {
+            $msg = "Delete assignment '$($sel.Name)' (role $($sel.Role) -> $($sel.RoleAssignee))? This cannot be undone."
+            if (-not (Confirm-WriteAction -Title 'Delete assignment' -Message $msg)) { return }
+            $r = Remove-RBACAssignment -Identity $sel.Name
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Deleted assignment '$($sel.Name)'." -DryRunTitle 'Remove-ManagementRoleAssignment (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Assignments' }
+    }
+
+    # ---------------- Scope write actions ----------------
+    function Do-NewScope {
+        if (-not (Require-Connected)) { return }
+        $form = Show-ScopeForm -Title 'New management scope'
+        if (-not $form) { return }
+        if (-not $form.Root -and -not $form.Filter) {
+            Set-Status 'Provide a Recipient root, a Filter, or both.' 'warn'; return
+        }
+        $callArgs = @{ Name = $form.Name }
+        if ($form.Root)   { $callArgs.RecipientRoot              = $form.Root }
+        if ($form.Filter) { $callArgs.RecipientRestrictionFilter = $form.Filter }
+        if ($script:DryRun) {
+            $callArgs.DryRun = $true
+            $r = New-RBACScope @callArgs
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Create scope' -Message "Create management scope '$($form.Name)'?")) { return }
+            $r = New-RBACScope @callArgs
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Created scope '$($form.Name)'." -DryRunTitle 'New-ManagementScope (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Scopes' }
+    }
+
+    function Do-EditScope {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a scope first.' 'warn'; return }
+        if ("$($sel.ScopeRestrictionType)" -like '*Implicit*') {
+            Set-Status "Implicit scopes can't be edited." 'warn'; return
+        }
+        $form = Show-ScopeForm `
+                    -Title          "Edit scope: $($sel.Name)" `
+                    -DefaultName    $sel.Name `
+                    -DefaultNewName $sel.Name `
+                    -DefaultRoot    "$($sel.RecipientRoot)" `
+                    -DefaultFilter  "$($sel.RecipientFilter)" `
+                    -NameReadOnly   $true `
+                    -ShowNewName    $true
+        if (-not $form) { return }
+        $callArgs = @{ Identity = $sel.Name }
+        if ($form.NewName -and $form.NewName -ne $sel.Name) { $callArgs.NewName = $form.NewName }
+        if ($form.Root -ne "$($sel.RecipientRoot)")         { $callArgs.RecipientRoot = $form.Root }
+        if ($form.Filter -ne "$($sel.RecipientFilter)")     { $callArgs.RecipientRestrictionFilter = $form.Filter }
+        if ($callArgs.Count -le 1) {
+            Set-Status 'Nothing to update.' 'info'; return
+        }
+        if ($script:DryRun) {
+            $callArgs.DryRun = $true
+            $r = Set-RBACScope @callArgs
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Update scope' -Message "Update scope '$($sel.Name)'?")) { return }
+            $r = Set-RBACScope @callArgs
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Updated scope '$($sel.Name)'." -DryRunTitle 'Set-ManagementScope (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Scopes' }
+    }
+
+    function Do-DeleteScope {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a scope to delete.' 'warn'; return }
+        if ("$($sel.ScopeRestrictionType)" -like '*Implicit*') {
+            Set-Status "Implicit scopes can't be deleted." 'warn'; return
+        }
+        if ($script:DryRun) {
+            $r = Remove-RBACScope -Identity $sel.Name -DryRun
+        }
+        else {
+            if (-not (Confirm-WriteAction -Title 'Delete scope' -Message "Delete scope '$($sel.Name)'? Assignments using it will lose their scope binding.")) { return }
+            $r = Remove-RBACScope -Identity $sel.Name
+        }
+        Handle-WriteResult -Result $r -SuccessMsg "Deleted scope '$($sel.Name)'." -DryRunTitle 'Remove-ManagementScope (dry-run)'
+        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Scopes' }
     }
 
     function Show-RoleCmdlets {

@@ -146,6 +146,177 @@ function Remove-RBACRoleGroup {
     return (Invoke-RBACWrite -Cmdlet 'Remove-RoleGroup' -Parameters $params -DryRun:$DryRun)
 }
 
+function New-RBACRole {
+    <#
+    .SYNOPSIS
+    Create a custom Management Role as a child of an existing role.
+    Exchange roles are normally created by copying a parent (built-in or custom)
+    and then trimming role entries from the child.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [Parameter(Mandatory = $true)] [string]$Parent,
+        [Parameter()]                   [string]$Description,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Name = $Name; Parent = $Parent }
+    if ($Description) { $params.Description = $Description }
+    return (Invoke-RBACWrite -Cmdlet 'New-ManagementRole' -Parameters $params -DryRun:$DryRun)
+}
+
+function Set-RBACRole {
+    <#
+    .SYNOPSIS
+    Update the description of a custom management role. Built-in roles cannot
+    be modified; the GUI guards against that before calling.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [string]$Description,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity }
+    if ($PSBoundParameters.ContainsKey('Description')) { $params.Description = $Description }
+    return (Invoke-RBACWrite -Cmdlet 'Set-ManagementRole' -Parameters $params -DryRun:$DryRun)
+}
+
+function Remove-RBACRole {
+    <#
+    .SYNOPSIS
+    Delete a custom management role. Built-in roles cannot be removed.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity; Confirm = $false }
+    return (Invoke-RBACWrite -Cmdlet 'Remove-ManagementRole' -Parameters $params -DryRun:$DryRun)
+}
+
+function New-RBACAssignment {
+    <#
+    .SYNOPSIS
+    Create a new management role assignment binding a role to an assignee.
+    Exactly one of -SecurityGroup, -User, -Computer, -Policy, -App must be set.
+    Optional recipient scoping is exposed via -RecipientOrganizationalUnitScope or
+    -CustomRecipientWriteScope (mutually exclusive on Exchange's side).
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [Parameter(Mandatory = $true)] [string]$Role,
+        [Parameter()]                   [ValidateSet('SecurityGroup','User','Computer','Policy','App')]
+                                        [string]$AssigneeKind,
+        [Parameter()]                   [string]$Assignee,
+        [Parameter()]                   [string]$RecipientOrganizationalUnitScope,
+        [Parameter()]                   [string]$CustomRecipientWriteScope,
+        [Parameter()]                   [switch]$DryRun
+    )
+    if (-not $AssigneeKind -or -not $Assignee) {
+        return [pscustomobject]@{
+            Preview  = ''
+            Result   = $null
+            Executed = $false
+            Error    = [System.Management.Automation.ErrorRecord]::new(
+                          [System.ArgumentException]::new('Assignee kind and value are required.'),
+                          'AssigneeMissing',
+                          [System.Management.Automation.ErrorCategory]::InvalidArgument,
+                          $null)
+        }
+    }
+    $params = @{ Name = $Name; Role = $Role; $AssigneeKind = $Assignee }
+    if ($RecipientOrganizationalUnitScope) { $params.RecipientOrganizationalUnitScope = $RecipientOrganizationalUnitScope }
+    if ($CustomRecipientWriteScope)        { $params.CustomRecipientWriteScope        = $CustomRecipientWriteScope }
+    return (Invoke-RBACWrite -Cmdlet 'New-ManagementRoleAssignment' -Parameters $params -DryRun:$DryRun)
+}
+
+function Remove-RBACAssignment {
+    <#
+    .SYNOPSIS
+    Delete a management role assignment. Built-in delegating assignments
+    (Identity ends with '-Delegating' and similar) often refuse removal; the
+    GUI surfaces the underlying error if the cmdlet refuses.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity; Confirm = $false }
+    return (Invoke-RBACWrite -Cmdlet 'Remove-ManagementRoleAssignment' -Parameters $params -DryRun:$DryRun)
+}
+
+function New-RBACScope {
+    <#
+    .SYNOPSIS
+    Create a recipient management scope. Pass -RecipientRoot for an OU-scoped
+    scope and/or -RecipientRestrictionFilter for an OPATH filter.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Name,
+        [Parameter()]                   [string]$RecipientRoot,
+        [Parameter()]                   [string]$RecipientRestrictionFilter,
+        [Parameter()]                   [switch]$DryRun
+    )
+    if (-not $RecipientRoot -and -not $RecipientRestrictionFilter) {
+        return [pscustomobject]@{
+            Preview  = ''
+            Result   = $null
+            Executed = $false
+            Error    = [System.Management.Automation.ErrorRecord]::new(
+                          [System.ArgumentException]::new('Provide RecipientRoot, RecipientRestrictionFilter, or both.'),
+                          'ScopeFilterMissing',
+                          [System.Management.Automation.ErrorCategory]::InvalidArgument,
+                          $null)
+        }
+    }
+    $params = @{ Name = $Name }
+    if ($RecipientRoot)              { $params.RecipientRoot              = $RecipientRoot }
+    if ($RecipientRestrictionFilter) { $params.RecipientRestrictionFilter = $RecipientRestrictionFilter }
+    return (Invoke-RBACWrite -Cmdlet 'New-ManagementScope' -Parameters $params -DryRun:$DryRun)
+}
+
+function Set-RBACScope {
+    <#
+    .SYNOPSIS
+    Update an existing recipient management scope (filter, root, name).
+    Pass -NewName to rename. Built-in implicit scopes cannot be modified.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [string]$NewName,
+        [Parameter()]                   [string]$RecipientRoot,
+        [Parameter()]                   [string]$RecipientRestrictionFilter,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity }
+    if ($PSBoundParameters.ContainsKey('NewName') -and $NewName) { $params.Name = $NewName }
+    if ($PSBoundParameters.ContainsKey('RecipientRoot'))         { $params.RecipientRoot = $RecipientRoot }
+    if ($PSBoundParameters.ContainsKey('RecipientRestrictionFilter')) {
+        $params.RecipientRestrictionFilter = $RecipientRestrictionFilter
+    }
+    return (Invoke-RBACWrite -Cmdlet 'Set-ManagementScope' -Parameters $params -DryRun:$DryRun)
+}
+
+function Remove-RBACScope {
+    <#
+    .SYNOPSIS
+    Delete a custom management scope. Implicit scopes cannot be removed.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity; Confirm = $false }
+    return (Invoke-RBACWrite -Cmdlet 'Remove-ManagementScope' -Parameters $params -DryRun:$DryRun)
+}
+
 function Copy-RBACRoleGroup {
     <#
     .SYNOPSIS
