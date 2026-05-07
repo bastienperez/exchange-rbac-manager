@@ -13,7 +13,10 @@
         in the toolbar, which gates writes behind a confirm prompt.
     #>
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter()]
+        [object]$Splash
+    )
 
     Add-Type -AssemblyName PresentationFramework
     Add-Type -AssemblyName PresentationCore
@@ -89,9 +92,7 @@
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
-              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="bd" Property="Background" Value="#F3F2F1"/></Trigger>
-              <Trigger Property="IsPressed"   Value="True"><Setter TargetName="bd" Property="Background" Value="#EDEBE9"/></Trigger>
-              <Trigger Property="IsEnabled"   Value="False">
+              <Trigger Property="IsEnabled" Value="False">
                 <Setter TargetName="bd" Property="Opacity" Value="0.55"/>
                 <Setter Property="Cursor" Value="No"/>
               </Trigger>
@@ -99,16 +100,41 @@
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background"  Value="#F3F2F1"/>
+          <Setter Property="BorderBrush" Value="#A19F9D"/>
+        </Trigger>
+        <Trigger Property="IsPressed" Value="True">
+          <Setter Property="Background" Value="#EDEBE9"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
 
     <Style x:Key="PrimaryBtn" TargetType="Button" BasedOn="{StaticResource ActionBtn}">
       <Setter Property="Background"  Value="#0078D4"/>
       <Setter Property="Foreground"  Value="White"/>
       <Setter Property="BorderBrush" Value="#0078D4"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background"  Value="#106EBE"/>
+          <Setter Property="BorderBrush" Value="#106EBE"/>
+        </Trigger>
+        <Trigger Property="IsPressed" Value="True">
+          <Setter Property="Background"  Value="#005A9E"/>
+          <Setter Property="BorderBrush" Value="#005A9E"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
     <Style x:Key="WarnBtn" TargetType="Button" BasedOn="{StaticResource ActionBtn}">
       <Setter Property="Foreground"  Value="#A4262C"/>
       <Setter Property="BorderBrush" Value="#F1B0B0"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background"  Value="#FDF3F4"/>
+          <Setter Property="BorderBrush" Value="#A4262C"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
 
     <Style TargetType="DataGrid">
@@ -122,18 +148,31 @@
       <Setter Property="IsReadOnly" Value="True"/>
       <Setter Property="SelectionMode" Value="Extended"/>
       <Setter Property="CanUserAddRows" Value="False"/>
+      <Setter Property="CanUserResizeColumns" Value="True"/>
+      <Setter Property="CanUserResizeRows" Value="False"/>
+      <Setter Property="CanUserSortColumns" Value="True"/>
+      <Setter Property="CanUserReorderColumns" Value="False"/>
       <Setter Property="AlternatingRowBackground" Value="#FAF9F8"/>
     </Style>
     <Style TargetType="DataGridColumnHeader">
-      <Setter Property="Background" Value="#FAF9F8"/>
-      <Setter Property="Foreground" Value="#605E5C"/>
+      <Setter Property="Background" Value="#F8F8F8"/>
+      <Setter Property="Foreground" Value="#323130"/>
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="Height" Value="34"/>
-      <Setter Property="Padding" Value="12,0"/>
-      <Setter Property="BorderBrush" Value="#E1DFDD"/>
-      <Setter Property="BorderThickness" Value="0,0,1,1"/>
-      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="MinHeight" Value="40"/>
+      <Setter Property="Padding" Value="14,8,14,8"/>
+      <Setter Property="BorderBrush" Value="#0078D4"/>
+      <Setter Property="BorderThickness" Value="0,0,0,2"/>
+      <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="SeparatorBrush" Value="#E1DFDD"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#EFF6FC"/>
+          <Setter Property="Foreground" Value="#0078D4"/>
+        </Trigger>
+      </Style.Triggers>
     </Style>
     <Style TargetType="DataGridRow">
       <Style.Triggers>
@@ -141,6 +180,10 @@
           <Setter Property="Background" Value="#DEECF9"/>
           <Setter Property="Foreground" Value="#201F1E"/>
         </Trigger>
+        <DataTrigger Binding="{Binding Enabled}" Value="False">
+          <Setter Property="Foreground" Value="#A19F9D"/>
+          <Setter Property="FontStyle" Value="Italic"/>
+        </DataTrigger>
       </Style.Triggers>
     </Style>
   </Window.Resources>
@@ -168,15 +211,18 @@
           <Border.Background><SolidColorBrush Color="White" Opacity="0.12"/></Border.Background>
           <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.4"/></Border.BorderBrush>
           <StackPanel>
-            <TextBlock Text="TENANT" Foreground="White" FontFamily="Consolas" FontSize="10" Opacity="0.85"/>
-            <TextBlock x:Name="TenantName" Text="Not connected" Foreground="White" FontSize="13"
+            <TextBlock x:Name="TenantLabel" Text="TENANT" Foreground="White" FontFamily="Consolas" FontSize="10" Opacity="0.85"/>
+            <TextBlock x:Name="TenantName" Text="" Foreground="White" FontSize="13"
                        Margin="0,2,0,4" TextTrimming="CharacterEllipsis"/>
             <StackPanel Orientation="Horizontal">
               <Ellipse x:Name="ConnPulse" Width="8" Height="8" Fill="#E6C4C4" VerticalAlignment="Center"/>
               <TextBlock x:Name="ConnStatus" Text="disconnected" Foreground="White"
                          FontFamily="Consolas" FontSize="11" Margin="6,0,0,0"/>
             </StackPanel>
-            <Button x:Name="BtnConnect" Content="Connect to Exchange Online" Margin="0,10,0,0" Height="30"
+            <CheckBox x:Name="ChkUseWAM" Content="Use WAM (broker)" Foreground="White" Margin="0,8,0,0"
+                      IsChecked="True"
+                      ToolTip="Web Account Manager is the default broker in ExchangeOnlineManagement 3.7.0+. Uncheck to pass -DisableWAM."/>
+            <Button x:Name="BtnConnect" Content="Connect to Exchange Online" Margin="0,8,0,0" Height="30"
                     Background="White" Foreground="#0078D4" BorderThickness="0" FontWeight="SemiBold" Cursor="Hand"/>
             <Button x:Name="BtnDisconnect" Content="Disconnect" Margin="0,4,0,0" Height="28"
                     Background="Transparent" Foreground="White" BorderBrush="White" BorderThickness="1"
@@ -198,7 +244,7 @@
         <Border Grid.Row="3" Padding="14,10" BorderThickness="0,1,0,0">
           <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.25"/></Border.BorderBrush>
           <TextBlock x:Name="VersionLabel" Foreground="White" Opacity="0.7"
-                     FontFamily="Consolas" FontSize="11" Text="v0.1.0"/>
+                     FontFamily="Consolas" FontSize="11"/>
         </Border>
       </Grid>
     </Border>
@@ -247,7 +293,7 @@
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <Border Grid.Column="0" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2"
+          <Border x:Name="SearchHost" Grid.Column="0" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2"
                   Background="White" Width="280" Height="30">
             <Grid>
               <Grid.ColumnDefinitions>
@@ -259,14 +305,32 @@
                        VerticalContentAlignment="Center" Background="Transparent"/>
             </Grid>
           </Border>
-          <ItemsControl x:Name="ChipsHost" Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+          <Popup x:Name="SuggestPopup"
+                 Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                 PopupAnimation="Fade" IsOpen="False">
+            <Border Background="White" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2"
+                    Width="280" MaxHeight="260">
+              <Border.Effect>
+                <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.15"/>
+              </Border.Effect>
+              <ListBox x:Name="SuggestList" BorderThickness="0" FontSize="12"
+                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
+            </Border>
+          </Popup>
+          <ItemsControl x:Name="ChipsHost" Grid.Column="1" Margin="12,0,12,0" VerticalAlignment="Center">
             <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
+              <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
           </ItemsControl>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
             <Button x:Name="BtnDryRun" Content="Dry-run: on" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
                     ToolTip="Toggle between dry-run preview and live execution"/>
+            <Button x:Name="BtnFilterRow" Content="Filter: off" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+                    ToolTip="Toggle a filter input in each column header"/>
+            <Button x:Name="BtnWrap" Content="Wrap: on" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+                    ToolTip="Toggle text wrapping on long cells"/>
+            <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+                    ToolTip="Resize columns to fit current content"/>
             <Button x:Name="BtnRefresh" Content="Refresh" Style="{StaticResource ActionBtn}"/>
           </StackPanel>
           <TextBlock x:Name="ItemCount" Grid.Column="3" FontFamily="Consolas" FontSize="11"
@@ -378,56 +442,73 @@
 
     # ---------------- App icon (generated at runtime: hub-and-spoke glyph) ----------------
     try {
-        $size = 32
+        [int]$iconSize = 32
+        [double]$cx       = $iconSize / 2.0
+        [double]$cy       = $iconSize / 2.0
+        [double]$hubR     = $iconSize * 0.13
+        [double]$spokeR   = $iconSize * 0.094
+        [double]$radius   = $iconSize * 0.18
+        [double]$strokeThickness = [Math]::Max(1.0, $iconSize * 0.045)
+
         $dv = [System.Windows.Media.DrawingVisual]::new()
         $ctx = $dv.RenderOpen()
-        # Background rounded square (Microsoft blue)
-        $bg = [System.Windows.Media.RectangleGeometry]::new(
-            [System.Windows.Rect]::new(0, 0, $size, $size), 6, 6)
-        $ctx.DrawGeometry([System.Windows.Media.Brushes]::Transparent, $null, $bg)
-        $ctx.DrawRectangle(
-            [System.Windows.Media.SolidColorBrush]::new(
-                [System.Windows.Media.ColorConverter]::ConvertFromString('#0078D4')),
-            $null,
-            [System.Windows.Rect]::new(0, 0, $size, $size))
-        $cx = 16; $cy = 16
-        $hubR = 4; $spokeR = 3
-        $pen = [System.Windows.Media.Pen]::new(
-            [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Colors]::White), 1.4)
-        $spokes = @(@(6, 7), @(26, 7), @(16, 26))
+
+        $bgBrush = [System.Windows.Media.SolidColorBrush]::new(
+            [System.Windows.Media.ColorConverter]::ConvertFromString('#0078D4'))
+        $ctx.DrawRoundedRectangle($bgBrush, $null,
+            [System.Windows.Rect]::new(0, 0, $iconSize, $iconSize), $radius, $radius)
+
+        $whiteBrush = [System.Windows.Media.SolidColorBrush]::new(
+            [System.Windows.Media.Colors]::White)
+        $pen = [System.Windows.Media.Pen]::new($whiteBrush, $strokeThickness)
+
+        $spokes = @(
+            ,@([double]($iconSize * 0.19), [double]($iconSize * 0.22))
+            ,@([double]($iconSize * 0.81), [double]($iconSize * 0.22))
+            ,@([double]($iconSize * 0.50), [double]($iconSize * 0.81))
+        )
         foreach ($p in $spokes) {
-            $ctx.DrawLine($pen, [System.Windows.Point]::new($cx, $cy),
-                                 [System.Windows.Point]::new($p[0], $p[1]))
+            $ctx.DrawLine($pen,
+                [System.Windows.Point]::new($cx, $cy),
+                [System.Windows.Point]::new($p[0], $p[1]))
         }
-        $ctx.DrawEllipse(
-            [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Colors]::White),
-            $null, [System.Windows.Point]::new($cx, $cy), $hubR, $hubR)
+        $ctx.DrawEllipse($whiteBrush, $null,
+            [System.Windows.Point]::new($cx, $cy), $hubR, $hubR)
         foreach ($p in $spokes) {
-            $ctx.DrawEllipse(
-                [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Colors]::White),
-                $null, [System.Windows.Point]::new($p[0], $p[1]), $spokeR, $spokeR)
+            $ctx.DrawEllipse($whiteBrush, $null,
+                [System.Windows.Point]::new($p[0], $p[1]), $spokeR, $spokeR)
         }
         $ctx.Close()
+
         $rtb = [System.Windows.Media.Imaging.RenderTargetBitmap]::new(
-            $size, $size, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
+            $iconSize, $iconSize, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
         $rtb.Render($dv)
         $rtb.Freeze()
-        $window.Icon = $rtb
+        # Wrapping in a BitmapFrame is required for Window.Icon to be picked up
+        # reliably by the Windows 11 taskbar.
+        $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create($rtb)
     }
-    catch { Write-Verbose "Icon generation skipped: $_" }
+    catch { Write-Warning "Icon generation skipped: $_" }
 
     # ---------------- UI lookup helpers ----------------
     $UI = @{}
     foreach ($n in @(
-            'TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','VersionLabel',
+            'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','VersionLabel',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
-            'Crumbs','ViewTitle','ViewDesc','SearchBox','ChipsHost','BtnRefresh','BtnDryRun',
+            'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost',
+            'BtnRefresh','BtnDryRun','BtnFilterRow','BtnWrap','BtnAutoFit',
             'ModeBadge','ModeBadgeText','ItemCount',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder',
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsList','BtnDetailsClose',
             'SelectionCount','ActionsHost',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
         )) { $UI[$n] = $window.FindName($n) }
+
+    # Wire the suggestion Popup's PlacementTarget in code: doing it via a XAML
+    # ElementName binding fails because Popup creates its own NameScope.
+    if ($UI.SuggestPopup -and $UI.SearchHost) {
+        $UI.SuggestPopup.PlacementTarget = $UI.SearchHost
+    }
 
     $script:CurrentView   = $null
     $script:Cache         = @{}        # cached collections per view
@@ -436,8 +517,8 @@
     $script:VizAssignment = $null      # currently visualized assignment
 
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
-    $modVer = (Get-Module -Name 'RBACExchangeManager' -ListAvailable | Select-Object -First 1).Version
-    $verStr = if ($modVer) { "v$($modVer.ToString())" } else { 'v0.1.0' }
+    $modVer = Get-RBACModuleVersion
+    $verStr = if ($modVer) { "v$($modVer.ToString())" } else { 'v?' }
     $UI.VersionLabel.Text = "RBACExchangeManager $verStr"
 
     $exoVer = (Get-Module -Name 'ExchangeOnlineManagement' -ListAvailable |
@@ -462,17 +543,27 @@
             $UI.ConnPulse.Fill  = '#9BE39B'
             $UI.BtnConnect.Visibility    = 'Collapsed'
             $UI.BtnDisconnect.Visibility = 'Visible'
+            $UI.TenantLabel.Visibility   = 'Visible'
+            $UI.TenantName.Visibility    = 'Visible'
             try {
                 $info = Get-ConnectionInformation -ErrorAction SilentlyContinue | Select-Object -First 1
+                $label = $null
                 if ($info) {
-                    $UI.TenantName.Text = if ($info.TenantId) { "$($info.Organization)" } else { 'Exchange Online' }
+                    foreach ($prop in 'Organization','UserPrincipalName','TenantId','ConnectionUri') {
+                        $val = "$($info.$prop)".Trim()
+                        if (-not [string]::IsNullOrEmpty($val)) { $label = $val; break }
+                    }
                 }
+                if ([string]::IsNullOrEmpty($label)) { $label = 'Exchange Online' }
+                $UI.TenantName.Text = $label
             } catch { }
         }
         else {
             $UI.ConnStatus.Text = 'disconnected'
             $UI.ConnPulse.Fill  = '#E6C4C4'
-            $UI.TenantName.Text = 'Not connected'
+            $UI.TenantName.Text = ''
+            $UI.TenantLabel.Visibility   = 'Collapsed'
+            $UI.TenantName.Visibility    = 'Collapsed'
             $UI.BtnConnect.Visibility    = 'Visible'
             $UI.BtnDisconnect.Visibility = 'Collapsed'
         }
@@ -482,7 +573,7 @@
     function New-Chip {
         param([string]$Label, [switch]$On)
         $b = [System.Windows.Controls.Border]::new()
-        $b.CornerRadius = '11'; $b.BorderThickness = '1'; $b.Margin = '0,0,6,0'; $b.Padding = '10,4'; $b.Height = 22
+        $b.CornerRadius = '11'; $b.BorderThickness = '1'; $b.Margin = '0,2,6,2'; $b.Padding = '10,4'; $b.Height = 22
         $b.VerticalAlignment = 'Center'
         $b.Cursor = [System.Windows.Input.Cursors]::Hand
         if ($On) { $b.Background = '#0078D4'; $b.BorderBrush = '#0078D4' }
@@ -1017,17 +1108,46 @@
     }
 
     # ---------------- View descriptors ----------------
+    # Badge palettes used across views. Keys are matched against the bound source
+    # value via DataTrigger, so the comparison is exact-match and case-sensitive.
+    # Values not in a palette render as plain text without a badge background.
+    $BadgeOrigin = @{
+        'Built-in' = @{ Bg='#DEF7E0'; Fg='#1B5E20' }
+        'Custom'   = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Implicit' = @{ Bg='#ECEFF1'; Fg='#37474F' }
+    }
+    $BadgeAssigneeType = @{
+        'User'                 = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'RoleGroup'            = @{ Bg='#FFF3E0'; Fg='#E65100' }
+        'SecurityGroup'        = @{ Bg='#F3E5F5'; Fg='#6A1B9A' }
+        'RoleAssignmentPolicy' = @{ Bg='#E0F7FA'; Fg='#006064' }
+        'Computer'             = @{ Bg='#ECEFF1'; Fg='#37474F' }
+    }
+    $BadgeScopeType = @{
+        'Recipient'          = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Server'             = @{ Bg='#FFF3E0'; Fg='#E65100' }
+        'Implicit'           = @{ Bg='#ECEFF1'; Fg='#37474F' }
+        'Custom'             = @{ Bg='#DEF7E0'; Fg='#1B5E20' }
+        'OrganizationConfig' = @{ Bg='#ECEFF1'; Fg='#37474F' }
+        'MyGAL'              = @{ Bg='#F3E5F5'; Fg='#6A1B9A' }
+    }
+    $BadgeRoleType = @{
+        'UnScoped' = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Role'     = @{ Bg='#ECEFF1'; Fg='#37474F' }
+    }
+
     $script:Views = @{
         RoleGroups = @{
             Crumbs = 'RBAC ▸ Role Groups'
             Title  = 'Role Groups'
             Desc   = 'Universal Security Groups that bundle roles, members and scopes.'
             Chips  = @('all','built-in','custom')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Name';        Path='Name';        Width=240 }
-                @{ Header='Description'; Path='Description'; Width='*' }
-                @{ Header='Members';     Path='MemberCount'; Width=90 }
-                @{ Header='Roles';       Path='RoleCount';   Width=80 }
+                @{ Header='Name';        Path='Name';        Width=240; MinWidth=120 }
+                @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
+                @{ Header='Members';     Path='MemberCount'; Width=90;  MinWidth=70; Align='Right'; Format='N0' }
+                @{ Header='Roles';       Path='RoleCount';   Width=80;  MinWidth=60; Align='Right'; Format='N0' }
             )
         }
         Roles = @{
@@ -1035,12 +1155,13 @@
             Title  = 'Roles'
             Desc   = 'Containers of cmdlets and parameters that grant capabilities.'
             Chips  = @('all','built-in','custom','unassigned')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Role Name';   Path='Name';        Width=240 }
-                @{ Header='Type';        Path='RoleType';    Width=140 }
-                @{ Header='Origin';      Path='Origin';      Width=100 }
-                @{ Header='Parent Role'; Path='Parent';      Width=180 }
-                @{ Header='Description'; Path='Description'; Width='*' }
+                @{ Header='Role Name';   Path='Name';        Width=240; MinWidth=140 }
+                @{ Header='Type';        Path='RoleType';    Width=140; MinWidth=100; Kind='Badge'; BadgeMap=$BadgeRoleType }
+                @{ Header='Origin';      Path='Origin';      Width=100; MinWidth=90;  Kind='Badge'; BadgeMap=$BadgeOrigin }
+                @{ Header='Parent Role'; Path='Parent';      Width=180; MinWidth=120 }
+                @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
             )
         }
         Assignments = @{
@@ -1048,13 +1169,14 @@
             Title  = 'Role Assignments'
             Desc   = 'Bindings of Role + Assignee + Scope.'
             Chips  = @('all','enabled','disabled')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Assignment Name'; Path='Name';                Width=260 }
-                @{ Header='Role';            Path='Role';                Width=200 }
-                @{ Header='Assignee';        Path='RoleAssignee';        Width=180 }
-                @{ Header='Type';            Path='RoleAssigneeType';    Width=100 }
-                @{ Header='Read Scope';      Path='RecipientReadScope';  Width='*' }
-                @{ Header='Write Scope';     Path='RecipientWriteScope'; Width='*' }
+                @{ Header='Assignment Name'; Path='Name';                Width=260; MinWidth=160 }
+                @{ Header='Role';            Path='Role';                Width=200; MinWidth=140 }
+                @{ Header='Assignee';        Path='RoleAssignee';        Width=180; MinWidth=120 }
+                @{ Header='Type';            Path='RoleAssigneeType';    Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeAssigneeType }
+                @{ Header='Read Scope';      Path='RecipientReadScope';  Width='*'; MinWidth=140 }
+                @{ Header='Write Scope';     Path='RecipientWriteScope'; Width='*'; MinWidth=140 }
             )
         }
         Scopes = @{
@@ -1062,11 +1184,12 @@
             Title  = 'Scopes'
             Desc   = 'Where a role applies - recipient or server filters.'
             Chips  = @('all','implicit','custom','recipient','server')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Scope Name';       Path='Name';                  Width=220 }
-                @{ Header='Type';             Path='ScopeRestrictionType';  Width=140 }
-                @{ Header='OU';               Path='RecipientRoot';         Width=200 }
-                @{ Header='Recipient Filter'; Path='FilterSummary';         Width='*' }
+                @{ Header='Scope Name';       Path='Name';                  Width=220; MinWidth=140 }
+                @{ Header='Type';             Path='ScopeRestrictionType';  Width=160; MinWidth=130; Kind='Badge'; BadgeMap=$BadgeScopeType }
+                @{ Header='OU';               Path='RecipientRoot';         Width=200; MinWidth=140 }
+                @{ Header='Recipient Filter'; Path='FilterSummary';         Width='*'; MinWidth=160 }
             )
         }
         UserRights = @{
@@ -1074,24 +1197,26 @@
             Title  = 'User Rights'
             Desc   = 'Effective permissions for a user - what they can run, where.'
             Chips  = @('expand role groups','show scopes')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='User';        Path='User';        Width=240 }
-                @{ Header='Role';        Path='Role';        Width=220 }
-                @{ Header='Granted Via'; Path='Via';         Width=200 }
-                @{ Header='Read Scope';  Path='ReadScope';   Width=180 }
-                @{ Header='Write Scope'; Path='WriteScope';  Width='*' }
+                @{ Header='User';        Path='User';        Width=240; MinWidth=160 }
+                @{ Header='Role';        Path='Role';        Width=220; MinWidth=140 }
+                @{ Header='Granted Via'; Path='Via';         Width=200; MinWidth=140 }
+                @{ Header='Read Scope';  Path='ReadScope';   Width=180; MinWidth=130 }
+                @{ Header='Write Scope'; Path='WriteScope';  Width='*'; MinWidth=130 }
             )
         }
         Commands = @{
             Crumbs = 'RBAC ▸ Command Lookup'
             Title  = 'Command Lookup'
             Desc   = 'Reverse lookup: which roles grant a given cmdlet?'
-            Chips  = @('all','built-in','custom')
+            Chips  = @()
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Role';        Path='RoleName';    Width=240 }
-                @{ Header='Type';        Path='RoleType';    Width=140 }
-                @{ Header='Origin';      Path='Origin';      Width=120 }
-                @{ Header='Description'; Path='Description'; Width='*' }
+                @{ Header='Role';        Path='RoleName';    Width=240; MinWidth=140 }
+                @{ Header='Type';        Path='RoleType';    Width=140; MinWidth=100; Kind='Badge'; BadgeMap=$BadgeRoleType }
+                @{ Header='Origin';      Path='Origin';      Width=120; MinWidth=100; Kind='Badge'; BadgeMap=$BadgeOrigin }
+                @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
             )
         }
         Visualizer = @{
@@ -1099,6 +1224,7 @@
             Title  = 'RBAC Visualizer · hub-and-spoke'
             Desc   = 'One assignment in the centre, three spokes out: Role · Assignee · Scope.'
             Chips  = @()
+            FrozenColumns = 0
             Columns = @()
         }
         Audit = @{
@@ -1106,40 +1232,248 @@
             Title  = 'Audit Log'
             Desc   = 'Recent RBAC changes from Search-AdminAuditLog.'
             Chips  = @('last 7 days','last 30 days','last 90 days')
+            FrozenColumns = 1
             Columns = @(
-                @{ Header='Timestamp';   Path='Timestamp';  Width=160 }
-                @{ Header='Caller';      Path='Caller';     Width=200 }
-                @{ Header='Cmdlet';      Path='Cmdlet';     Width=220 }
-                @{ Header='Object';      Path='Object';     Width=220 }
-                @{ Header='Parameters';  Path='Parameters'; Width='*' }
+                @{ Header='Timestamp';   Path='Timestamp';  Width=170; MinWidth=160 }
+                @{ Header='Caller';      Path='Caller';     Width=200; MinWidth=140 }
+                @{ Header='Cmdlet';      Path='Cmdlet';     Width=220; MinWidth=140 }
+                @{ Header='Object';      Path='Object';     Width=220; MinWidth=140 }
+                @{ Header='Parameters';  Path='Parameters'; Width='*'; MinWidth=200 }
             )
         }
     }
 
     # ---------------- Grid configuration ----------------
+    $script:ColumnFilters       = @{}
+    $script:FilterRowEnabled    = $false
+    $script:WrapEnabled         = $true
+    $script:FilterDebounceTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $script:FilterDebounceTimer.Interval = [TimeSpan]::FromMilliseconds(250)
+    $script:FilterDebounceTimer.Add_Tick({
+        $script:FilterDebounceTimer.Stop()
+        Apply-Filters
+    })
+
+    function Schedule-FilterApply {
+        $script:FilterDebounceTimer.Stop()
+        $script:FilterDebounceTimer.Start()
+    }
+
+    function New-Brush {
+        param([string]$Hex)
+        New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.ColorConverter]::ConvertFromString($Hex))
+    }
+
+    function Test-ContainsCI {
+        # Case-insensitive literal substring match. Avoids -like wildcard surprises
+        # (*, ?, [...]) when the input comes from a free-text filter input.
+        param([string]$Haystack, [string]$Needle)
+        if ([string]::IsNullOrEmpty($Needle))   { return $true }
+        if ([string]::IsNullOrEmpty($Haystack)) { return $false }
+        return ($Haystack.IndexOf($Needle, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+    }
+
     function Set-GridColumns {
         param([array]$Columns)
         $UI.MainGrid.Columns.Clear()
+
         foreach ($c in $Columns) {
             $col = [System.Windows.Controls.DataGridTextColumn]::new()
-            $col.Header  = $c.Header
-            $col.Binding = [System.Windows.Data.Binding]::new($c.Path)
+            $col.MinWidth        = if ($c.MinWidth) { [double]$c.MinWidth } else { 60.0 }
+            $col.CanUserResize   = $true
+            $col.CanUserSort     = $true
+            $col.SortMemberPath  = $c.Path
+
+            # ---- Header: label + optional filter TextBox ----
+            $headerPanel = [System.Windows.Controls.StackPanel]::new()
+            $headerPanel.Orientation = [System.Windows.Controls.Orientation]::Vertical
+            $headerLabel = [System.Windows.Controls.TextBlock]::new()
+            $headerLabel.Text       = ([string]$c.Header).ToUpperInvariant()
+            $headerLabel.FontWeight = [System.Windows.FontWeights]::SemiBold
+            $headerLabel.FontSize   = 11
+            $headerLabel.Foreground = (New-Brush '#323130')
+            # Mirror the cell alignment in the header so numeric columns line up.
+            if ($c.Align -eq 'Right') {
+                $headerLabel.TextAlignment = [System.Windows.TextAlignment]::Right
+                $headerPanel.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Right
+            }
+            $null = $headerPanel.Children.Add($headerLabel)
+            if ($script:FilterRowEnabled) {
+                $fbox = [System.Windows.Controls.TextBox]::new()
+                $fbox.Margin     = '0,4,0,0'
+                $fbox.MinHeight  = 22
+                $fbox.FontSize   = 11
+                $fbox.FontWeight = [System.Windows.FontWeights]::Normal
+                $fbox.Foreground = (New-Brush '#201F1E')
+                $fbox.ToolTip    = 'Filter (contains)'
+                $fbox.Tag        = $c.Path
+                if ($script:ColumnFilters.ContainsKey($c.Path)) { $fbox.Text = [string]$script:ColumnFilters[$c.Path] }
+                $fbox.Add_TextChanged({
+                    param($s, $e)
+                    $key = [string]$s.Tag
+                    $val = [string]$s.Text
+                    if ([string]::IsNullOrEmpty($val)) {
+                        if ($script:ColumnFilters.ContainsKey($key)) { $null = $script:ColumnFilters.Remove($key) }
+                    }
+                    else { $script:ColumnFilters[$key] = $val }
+                    Schedule-FilterApply
+                })
+                $null = $headerPanel.Children.Add($fbox)
+            }
+            $col.Header = $headerPanel
+
+            # Push the header content (StackPanel) to the right edge of the column header
+            # cell when the column is right-aligned, so the label sits above its numbers.
+            # BasedOn the implicit DataGridColumnHeader style so right-aligned columns keep
+            # the global look (hover, accent border, padding…).
+            if ($c.Align -eq 'Right') {
+                $baseStyle = $UI.MainGrid.TryFindResource(
+                    [System.Windows.Controls.Primitives.DataGridColumnHeader])
+                $hStyle = [System.Windows.Style]::new(
+                    [System.Windows.Controls.Primitives.DataGridColumnHeader],
+                    $baseStyle)
+                $hStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.Primitives.DataGridColumnHeader]::HorizontalContentAlignmentProperty,
+                    [System.Windows.HorizontalAlignment]::Right))
+                $col.HeaderStyle = $hStyle
+            }
+
+            # ---- Width ----
             if ($c.Width -eq '*') {
                 $col.Width = [System.Windows.Controls.DataGridLength]::new(1, [System.Windows.Controls.DataGridLengthUnitType]::Star)
             }
             else {
                 $col.Width = [System.Windows.Controls.DataGridLength]::new([double]$c.Width)
             }
-            # Tooltip showing full cell value on hover (so truncated content stays readable)
+
+            # ---- Binding (with optional StringFormat) ----
+            $binding = [System.Windows.Data.Binding]::new($c.Path)
+            if ($c.Format) { $binding.StringFormat = "{0:$($c.Format)}" }
+            $col.Binding = $binding
+
+            # ---- Cell ElementStyle (TextBlock) ----
             $eStyle = [System.Windows.Style]::new([System.Windows.Controls.TextBlock])
+
+            # Wrap vs ellipsis
+            if ($script:WrapEnabled) {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextWrappingProperty,
+                    [System.Windows.TextWrapping]::Wrap))
+            }
+            else {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextTrimmingProperty,
+                    [System.Windows.TextTrimming]::CharacterEllipsis))
+            }
+
+            # Right alignment for numeric columns
+            if ($c.Align -eq 'Right') {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextAlignmentProperty,
+                    [System.Windows.TextAlignment]::Right))
+            }
+
+            # Tooltip with full value (helpful when ellipsis truncates)
             $tt = [System.Windows.Data.Binding]::new($c.Path)
             $eStyle.Setters.Add([System.Windows.Setter]::new(
-                [System.Windows.Controls.TextBlock]::TextTrimmingProperty,
-                [System.Windows.TextTrimming]::CharacterEllipsis))
-            $eStyle.Setters.Add([System.Windows.Setter]::new(
                 [System.Windows.Controls.ToolTipService]::ToolTipProperty, $tt))
+
+            # Empty/null → "-" placeholder, subdued. Two DataTriggers: one for null source,
+            # one for empty string. WPF DataTrigger does an exact-equals against Value so
+            # we need both to cover real-world data.
+            foreach ($missingValue in @($null, '')) {
+                $dt = [System.Windows.DataTrigger]::new()
+                $dt.Binding = [System.Windows.Data.Binding]::new($c.Path)
+                $dt.Value   = $missingValue
+                $dt.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::TextProperty, [string]'-'))
+                $dt.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::ForegroundProperty, (New-Brush '#A19F9D')))
+                $eStyle.Triggers.Add($dt)
+            }
+
+            # Badge: colorise per known value (also a DataTrigger on the bound source value)
+            if ($c.Kind -eq 'Badge' -and $c.BadgeMap) {
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.Controls.TextBlock]::PaddingProperty,
+                    [System.Windows.Thickness]::new(8, 2, 8, 2)))
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.FrameworkElement]::HorizontalAlignmentProperty,
+                    [System.Windows.HorizontalAlignment]::Left))
+                $eStyle.Setters.Add([System.Windows.Setter]::new(
+                    [System.Windows.FrameworkElement]::VerticalAlignmentProperty,
+                    [System.Windows.VerticalAlignment]::Center))
+                foreach ($k in $c.BadgeMap.Keys) {
+                    $palette = $c.BadgeMap[$k]
+                    $bDT = [System.Windows.DataTrigger]::new()
+                    $bDT.Binding = [System.Windows.Data.Binding]::new($c.Path)
+                    $bDT.Value   = [string]$k
+                    $bDT.Setters.Add([System.Windows.Setter]::new(
+                        [System.Windows.Controls.TextBlock]::BackgroundProperty, (New-Brush $palette.Bg)))
+                    $bDT.Setters.Add([System.Windows.Setter]::new(
+                        [System.Windows.Controls.TextBlock]::ForegroundProperty, (New-Brush $palette.Fg)))
+                    $bDT.Setters.Add([System.Windows.Setter]::new(
+                        [System.Windows.Controls.TextBlock]::FontWeightProperty,
+                        [System.Windows.FontWeights]::SemiBold))
+                    $eStyle.Triggers.Add($bDT)
+                }
+            }
+
             $col.ElementStyle = $eStyle
             $null = $UI.MainGrid.Columns.Add($col)
+        }
+
+        # Frozen columns + row height per wrap mode
+        $cv = $script:Views[$script:CurrentView]
+        if ($cv -and $cv.ContainsKey('FrozenColumns')) {
+            $UI.MainGrid.FrozenColumnCount = [int]$cv.FrozenColumns
+        }
+        else {
+            $UI.MainGrid.FrozenColumnCount = 0
+        }
+        if ($script:WrapEnabled) { $UI.MainGrid.RowHeight = [double]::NaN }
+        else                     { $UI.MainGrid.RowHeight = 34.0 }
+    }
+
+    function Auto-FitColumns {
+        if (-not $UI.MainGrid -or -not $UI.MainGrid.Columns) { return }
+        # Pass 1: ask WPF to size each column to its content
+        foreach ($col in $UI.MainGrid.Columns) {
+            try {
+                $col.Width = [System.Windows.Controls.DataGridLength]::new(1, [System.Windows.Controls.DataGridLengthUnitType]::Auto)
+            } catch { }
+        }
+        # Force layout so ActualWidth is up to date, then snap to fixed width so the user can keep dragging
+        $UI.MainGrid.UpdateLayout()
+        foreach ($col in $UI.MainGrid.Columns) {
+            try {
+                $w = $col.ActualWidth
+                if ($w -gt 0) {
+                    $col.Width = [System.Windows.Controls.DataGridLength]::new([double]$w)
+                }
+            } catch { }
+        }
+    }
+
+    function Toggle-FilterRow {
+        $script:FilterRowEnabled = -not $script:FilterRowEnabled
+        $UI.BtnFilterRow.Content = if ($script:FilterRowEnabled) { 'Filter: on' } else { 'Filter: off' }
+        if (-not $script:FilterRowEnabled) {
+            $script:ColumnFilters.Clear()
+        }
+        $cfg = $script:Views[$script:CurrentView]
+        if ($cfg -and $cfg.Columns -and $cfg.Columns.Count -gt 0) {
+            Set-GridColumns -Columns $cfg.Columns
+        }
+        Apply-Filters
+    }
+
+    function Toggle-Wrap {
+        $script:WrapEnabled = -not $script:WrapEnabled
+        $UI.BtnWrap.Content = if ($script:WrapEnabled) { 'Wrap: on' } else { 'Wrap: off' }
+        $cfg = $script:Views[$script:CurrentView]
+        if ($cfg -and $cfg.Columns -and $cfg.Columns.Count -gt 0) {
+            Set-GridColumns -Columns $cfg.Columns
         }
     }
 
@@ -1177,6 +1511,17 @@
         if ($script:VizScale)     {
             $script:VizScale.CenterX = 0; $script:VizScale.CenterY = 0
             $script:VizScale.ScaleX = 1; $script:VizScale.ScaleY = 1
+        }
+        # Scroll the viewport so the assignment hub sits in the middle of the
+        # visible area. UpdateLayout() ensures ViewportWidth/Height are valid
+        # right after the transform reset.
+        $sv = $UI.VizScroll
+        if ($sv -and $script:VizHubCanvasX) {
+            $sv.UpdateLayout()
+            $targetX = $script:VizHubCanvasX - $sv.ViewportWidth  / 2
+            $targetY = $script:VizHubCanvasY - $sv.ViewportHeight / 2
+            $sv.ScrollToHorizontalOffset([Math]::Max(0, $targetX))
+            $sv.ScrollToVerticalOffset(  [Math]::Max(0, $targetY))
         }
     }
 
@@ -1441,6 +1786,10 @@
         [System.Windows.Controls.Canvas]::SetLeft($hub, $cx - $hubR + $offsetX)
         [System.Windows.Controls.Canvas]::SetTop($hub,  $cy - $hubR + $offsetY)
         $null = $cv.Children.Add($hub)
+        # Remember the hub's centre on the canvas so the Center button can scroll
+        # the viewport to bring the assignment back into view.
+        $script:VizHubCanvasX = $cx + $offsetX
+        $script:VizHubCanvasY = $cy + $offsetY
         # Hub anchors the START of each spoke line (offset = hub centre)
         $hubLinks = @()
         foreach ($l in $spokeLines) {
@@ -1726,6 +2075,13 @@
         if (-not $src) { return }
 
         $chip = $script:ActiveChip[$view]
+        $colFilters = @{}
+        if ($script:ColumnFilters) {
+            foreach ($k in $script:ColumnFilters.Keys) {
+                $v = "$($script:ColumnFilters[$k])".Trim()
+                if ($v -ne '') { $colFilters[$k] = $v }
+            }
+        }
         $filtered = foreach ($row in $src) {
             if (-not (Test-ChipMatch -Row $row -View $view -Chip $chip)) { continue }
             if ($q -ne '') {
@@ -1733,9 +2089,19 @@
                 foreach ($p in $row.PSObject.Properties) {
                     if ($p.Name -like '_*') { continue }
                     $v = "$($p.Value)"
-                    if ($v -and $v -like "*$q*") { $hit = $true; break }
+                    if (Test-ContainsCI -Haystack $v -Needle $q) { $hit = $true; break }
                 }
                 if (-not $hit) { continue }
+            }
+            if ($colFilters.Count -gt 0) {
+                $allMatch = $true
+                foreach ($cf in $colFilters.GetEnumerator()) {
+                    $cellVal = "$($row.$($cf.Key))"
+                    if (-not (Test-ContainsCI -Haystack $cellVal -Needle $cf.Value)) {
+                        $allMatch = $false; break
+                    }
+                }
+                if (-not $allMatch) { continue }
             }
             $row
         }
@@ -1821,10 +2187,14 @@
         $script:CurrentView = $View
         $cfg = $script:Views[$View]
 
+        # Reset per-column filters on view switch (different views have different paths)
+        if ($script:ColumnFilters) { $script:ColumnFilters.Clear() }
+
         $UI.Crumbs.Text    = $cfg.Crumbs
         $UI.ViewTitle.Text = $cfg.Title
         $UI.ViewDesc.Text  = $cfg.Desc
         $UI.SearchBox.Text = ''
+        if ($UI.SuggestPopup) { $UI.SuggestPopup.IsOpen = $false }
         $defaultChip = if ($cfg.Chips -and $cfg.Chips.Count -gt 0) { $cfg.Chips[0] } else { '' }
         Set-Chips -Labels $cfg.Chips -ActiveLabel $defaultChip
         $UI.ItemCount.Text = '0 items'
@@ -1833,17 +2203,23 @@
 
         # Switch table vs visualizer
         if ($View -eq 'Visualizer') {
-            $UI.MainGrid.Visibility = 'Collapsed'
-            $UI.VizHost.Visibility  = 'Visible'
+            $UI.MainGrid.Visibility   = 'Collapsed'
+            $UI.VizHost.Visibility    = 'Visible'
+            # SearchBox has no effect on the canvas; hide it to avoid confusion.
+            $UI.SearchHost.Visibility = 'Collapsed'
         }
         else {
-            $UI.VizHost.Visibility  = 'Collapsed'
-            $UI.MainGrid.Visibility = 'Visible'
+            $UI.VizHost.Visibility    = 'Collapsed'
+            $UI.MainGrid.Visibility   = 'Visible'
+            $UI.SearchHost.Visibility = 'Visible'
             Set-GridColumns -Columns $cfg.Columns
         }
 
         # Action bar
         Set-Actions -Buttons (Get-ActionsForView -View $View)
+
+        # Prefetch cmdlet suggestions so the first keystroke is instant.
+        if ($View -eq 'Commands') { Ensure-CommandSuggestions }
 
         Load-ViewData -View $View
     }
@@ -2246,14 +2622,119 @@
 
     function Pick-VizAssignment {
         if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
-        $names = foreach ($asg in $script:Cache.Assignments) { $asg.Name }
-        $names = @($names)
-        if (@($names).Count -eq 0) { Set-Status 'No assignments loaded.' 'warn'; return }
-        $sel = ($names | Out-GridView -Title 'Pick assignment to visualize' -OutputMode Single)
-        if ($sel) {
-            $script:VizAssignment = $script:Cache.Assignments | Where-Object { $_.Name -eq $sel } | Select-Object -First 1
+        $assignments = @($script:Cache.Assignments)
+        if ($assignments.Count -eq 0) { Set-Status 'No assignments loaded.' 'warn'; return }
+
+        $rows = foreach ($a in $assignments) {
+            [PSCustomObject]@{
+                Name     = $a.Name
+                Role     = $a.Role
+                Assignee = $a.RoleAssignee
+                Scope    = if ($a.RecipientWriteScope) { $a.RecipientWriteScope } else { 'Organization' }
+                _raw     = $a
+            }
+        }
+
+        $dlgXaml = @'
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pick assignment to visualize"
+        Width="780" Height="540" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="#FAF9F8" ShowInTaskbar="False">
+  <Grid Margin="14">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+    <TextBlock Grid.Row="0" Text="Pick a role assignment" FontSize="18" FontWeight="SemiBold" Foreground="#201F1E"/>
+    <Border Grid.Row="1" Margin="0,12,0,8" Padding="8,4" Background="White"
+            BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2" Height="32">
+      <Grid>
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Grid.Column="0" Text="⌕" Margin="2,0,8,0" Foreground="#605E5C" VerticalAlignment="Center"/>
+        <TextBox x:Name="FilterBox" Grid.Column="1" BorderThickness="0" VerticalContentAlignment="Center"
+                 Background="Transparent"/>
+        <TextBlock x:Name="CountText" Grid.Column="2" Margin="8,0,2,0" Foreground="#605E5C"
+                   FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+      </Grid>
+    </Border>
+    <ListView x:Name="List" Grid.Row="2" BorderBrush="#E1DFDD" BorderThickness="1" Background="White"
+              SelectionMode="Single">
+      <ListView.View>
+        <GridView>
+          <GridViewColumn Header="Name"     Width="240" DisplayMemberBinding="{Binding Name}"/>
+          <GridViewColumn Header="Role"     Width="160" DisplayMemberBinding="{Binding Role}"/>
+          <GridViewColumn Header="Assignee" Width="180" DisplayMemberBinding="{Binding Assignee}"/>
+          <GridViewColumn Header="Scope"    Width="160" DisplayMemberBinding="{Binding Scope}"/>
+        </GridView>
+      </ListView.View>
+    </ListView>
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+      <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="32" Margin="0,0,8,0"
+              Background="White" BorderBrush="#C8C6C4" BorderThickness="1" Foreground="#201F1E" Cursor="Hand"/>
+      <Button x:Name="BtnOK" Content="Visualize" Width="110" Height="32"
+              Background="#0078D4" BorderBrush="#0078D4" BorderThickness="1" Foreground="White"
+              FontWeight="SemiBold" Cursor="Hand" IsDefault="True"/>
+    </StackPanel>
+  </Grid>
+</Window>
+'@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($dlgXaml))
+        $dlg    = [System.Windows.Markup.XamlReader]::Load($reader)
+        $dlg.Owner = $window
+
+        $list      = $dlg.FindName('List')
+        $filterBox = $dlg.FindName('FilterBox')
+        $countText = $dlg.FindName('CountText')
+        $btnOK     = $dlg.FindName('BtnOK')
+        $btnCancel = $dlg.FindName('BtnCancel')
+
+        $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView($rows)
+        $list.ItemsSource = $rows
+        $countText.Text   = "$($rows.Count) items"
+
+        $applyFilter = {
+            $needle = ([string]$filterBox.Text).Trim().ToLowerInvariant()
+            if ([string]::IsNullOrEmpty($needle)) {
+                $view.Filter = $null
+            }
+            else {
+                $view.Filter = [Predicate[object]]{
+                    param($it)
+                    foreach ($prop in 'Name','Role','Assignee','Scope') {
+                        $v = "$($it.$prop)".ToLowerInvariant()
+                        if ($v.Contains($needle)) { return $true }
+                    }
+                    return $false
+                }
+            }
+            $countText.Text = "$(@($view).Count) items"
+        }
+
+        $filterBox.Add_TextChanged({ & $applyFilter })
+
+        $list.Add_MouseDoubleClick({
+            param($s, $e)
+            if ($list.SelectedItem) { $btnOK.RaiseEvent(
+                [System.Windows.RoutedEventArgs]::new([System.Windows.Controls.Button]::ClickEvent)) }
+        })
+
+        $btnOK.Add_Click({ $dlg.DialogResult = $true; $dlg.Close() })
+        $btnCancel.Add_Click({ $dlg.DialogResult = $false; $dlg.Close() })
+
+        $filterBox.Focus() | Out-Null
+        if ($rows.Count -gt 0) { $list.SelectedIndex = 0 }
+
+        if ($dlg.ShowDialog() -eq $true -and $list.SelectedItem) {
+            $script:VizAssignment = $list.SelectedItem._raw
             Render-Visualizer
-            Set-Status "Visualizing $sel." 'ok'
+            Set-Status "Visualizing $($list.SelectedItem.Name)." 'ok'
         }
     }
 
@@ -2279,8 +2760,20 @@
     # ---------------- Connect / Disconnect ----------------
     function Do-Connect {
         try {
-            Set-Status 'Connecting to Exchange Online…'
-            $null = Connect-RBACExchangeOnline
+            $useWam = ($UI.ChkUseWAM.IsChecked -eq $true)
+            $brokerLabel = if ($useWam) { 'WAM enabled' } else { 'WAM disabled' }
+            Set-Status "Connecting to Exchange Online ($brokerLabel)…"
+
+            # Force the UI to repaint before Connect-ExchangeOnline takes over the thread
+            # (the auth flow blocks this dispatcher and would otherwise hide the status).
+            $window.Dispatcher.Invoke(
+                [action]{},
+                [System.Windows.Threading.DispatcherPriority]::Render
+            )
+
+            $connectArgs = @{}
+            if (-not $useWam) { $connectArgs['DisableWAM'] = $true }
+            $null = Connect-RBACExchangeOnline @connectArgs
             Update-ConnectionUI
             Set-Status 'Connected.' 'ok'
             if ($script:CurrentView) { Load-ViewData -View $script:CurrentView }
@@ -2304,6 +2797,10 @@
     $UI.BtnDisconnect.Add_Click({ Do-Disconnect })
     $UI.BtnRefresh.Add_Click({ if ($script:CurrentView) { Load-ViewData -View $script:CurrentView } })
     $UI.BtnDryRun.Add_Click({ Toggle-DryRun })
+    $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
+    $UI.BtnWrap.Add_Click({ Toggle-Wrap })
+    $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
+    $UI.BtnDryRun.Add_Click({ Toggle-DryRun })
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
     $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
@@ -2325,7 +2822,109 @@
 
     $UI.SearchBox.Add_KeyDown({
         param($s,$e)
+        # Arrow keys / Enter on a visible suggestion list = list-driven nav
+        if ($UI.SuggestPopup -and $UI.SuggestPopup.IsOpen -and $UI.SuggestList.Items.Count -gt 0) {
+            switch ($e.Key) {
+                'Down' {
+                    $idx = $UI.SuggestList.SelectedIndex
+                    if ($idx -lt ($UI.SuggestList.Items.Count - 1)) { $UI.SuggestList.SelectedIndex = $idx + 1 }
+                    else { $UI.SuggestList.SelectedIndex = 0 }
+                    $UI.SuggestList.ScrollIntoView($UI.SuggestList.SelectedItem)
+                    $e.Handled = $true; return
+                }
+                'Up' {
+                    $idx = $UI.SuggestList.SelectedIndex
+                    if ($idx -gt 0) { $UI.SuggestList.SelectedIndex = $idx - 1 }
+                    else { $UI.SuggestList.SelectedIndex = $UI.SuggestList.Items.Count - 1 }
+                    $UI.SuggestList.ScrollIntoView($UI.SuggestList.SelectedItem)
+                    $e.Handled = $true; return
+                }
+                'Return' {
+                    if ($UI.SuggestList.SelectedItem) {
+                        $UI.SearchBox.Text = [string]$UI.SuggestList.SelectedItem
+                        $UI.SearchBox.CaretIndex = $UI.SearchBox.Text.Length
+                        $UI.SuggestPopup.IsOpen = $false
+                        Apply-Search
+                        $e.Handled = $true; return
+                    }
+                }
+                'Escape' { $UI.SuggestPopup.IsOpen = $false; $e.Handled = $true; return }
+            }
+        }
         if ($e.Key -eq 'Return') { Apply-Search; $e.Handled = $true }
+    })
+
+    # Build the cmdlet suggestion cache lazily on first need (Commands view).
+    # Source = the EOM session's temporary proxy module (ModuleName from
+    # Get-ConnectionInformation). Get-Command on that module is in-memory and
+    # returns in milliseconds, unlike Get-ManagementRoleEntry which calls the
+    # service for every role/cmdlet pair.
+    function Ensure-CommandSuggestions {
+        if ($script:CommandSuggestions -and $script:CommandSuggestions.Count -gt 0) { return }
+        if (-not (Test-RBACExchangeConnection)) { return }
+        try {
+            $moduleNames = @(
+                Get-ConnectionInformation -ErrorAction SilentlyContinue |
+                    Where-Object { $_.ModuleName } |
+                    Select-Object -ExpandProperty ModuleName -Unique
+            )
+            $list = @()
+            if ($moduleNames.Count -gt 0) {
+                $list = Get-Command -Module $moduleNames -ErrorAction SilentlyContinue |
+                        Select-Object -ExpandProperty Name -Unique |
+                        Sort-Object
+            }
+            $script:CommandSuggestions = @($list)
+        }
+        catch { $script:CommandSuggestions = @() }
+    }
+
+    function Update-SuggestPopup {
+        if (-not $UI.SuggestPopup) { return }
+        if ($script:CurrentView -ne 'Commands') { $UI.SuggestPopup.IsOpen = $false; return }
+        $q = [string]$UI.SearchBox.Text
+        if ([string]::IsNullOrWhiteSpace($q) -or $q.Length -lt 2) {
+            $UI.SuggestPopup.IsOpen = $false; return
+        }
+        Ensure-CommandSuggestions
+        if (-not $script:CommandSuggestions -or $script:CommandSuggestions.Count -eq 0) {
+            $UI.SuggestPopup.IsOpen = $false; return
+        }
+        # Rank: starts-with first, then contains.
+        $needle = $q.ToLowerInvariant()
+        $starts = @(); $contains = @()
+        foreach ($name in $script:CommandSuggestions) {
+            $low = $name.ToLowerInvariant()
+            if ($low.StartsWith($needle))    { $starts += $name }
+            elseif ($low.Contains($needle))  { $contains += $name }
+            if (($starts.Count + $contains.Count) -ge 50) { break }
+        }
+        $matches = @($starts) + @($contains) | Select-Object -First 30
+        if ($matches.Count -eq 0) { $UI.SuggestPopup.IsOpen = $false; return }
+        $UI.SuggestList.ItemsSource = $matches
+        $UI.SuggestList.SelectedIndex = 0
+        $UI.SuggestPopup.IsOpen = $true
+    }
+
+    $UI.SearchBox.Add_TextChanged({ Update-SuggestPopup })
+    $UI.SearchBox.Add_LostFocus({
+        if (-not $UI.SuggestPopup) { return }
+        # Defer close so a click on the suggestion list isn't swallowed.
+        $UI.SuggestPopup.Dispatcher.BeginInvoke(
+            [action]{
+                if ($UI.SuggestPopup -and -not $UI.SuggestList.IsKeyboardFocusWithin) {
+                    $UI.SuggestPopup.IsOpen = $false
+                }
+            },
+            [System.Windows.Threading.DispatcherPriority]::Background) | Out-Null
+    })
+    $UI.SuggestList.Add_MouseLeftButtonUp({
+        if ($UI.SuggestList.SelectedItem) {
+            $UI.SearchBox.Text = [string]$UI.SuggestList.SelectedItem
+            $UI.SearchBox.CaretIndex = $UI.SearchBox.Text.Length
+            $UI.SuggestPopup.IsOpen = $false
+            Apply-Search
+        }
     })
 
     $UI.MainGrid.Add_SelectionChanged({
@@ -2386,6 +2985,15 @@
     Update-ModeBadge
     Set-Status 'Ready. Connect to Exchange Online to load data.'
     Switch-View -View 'RoleGroups'
+
+    # Dismiss the splash once the main window is fully rendered so the user
+    # never sees a gap between splash close and main window paint.
+    if ($Splash) {
+        $splashRef = $Splash
+        $window.Add_ContentRendered({
+            try { $splashRef.Close() } catch { }
+        }.GetNewClosure())
+    }
 
     $null = $window.ShowDialog()
     return

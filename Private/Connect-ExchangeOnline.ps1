@@ -6,12 +6,27 @@ function Connect-RBACExchangeOnline {
         Establishes a connection to Exchange Online with proper error handling
     .EXAMPLE
         Connect-RBACExchangeOnline
+    .EXAMPLE
+        Connect-RBACExchangeOnline -DisableWAM
     #>
     [CmdletBinding()]
-    param()
-    
+    param(
+        [switch]$DisableWAM
+    )
+
     try {
-        Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+        # Beginning in Exchange Online PowerShell module version 3.7.0, Microsoft enabled Web
+        # Account Manager (WAM) as the default authentication broker. We pass -DisableWAM
+        # straight through; on EOM < 3.7.0 the parameter doesn't exist and the user sees an
+        # actionable error (WAM only matters on 3.7.0+ anyway).
+        if ($DisableWAM) {
+            Write-Verbose 'Connecting to Exchange Online with WAM disabled.'
+            Connect-ExchangeOnline -ShowBanner:$false -DisableWAM -ErrorAction Stop
+        }
+        else {
+            Write-Verbose 'Connecting to Exchange Online (WAM default behaviour).'
+            Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
+        }
         $Global:RBACExchangeConnectionType = 'Exchange Online'
         return $true
     }
