@@ -46,7 +46,7 @@ function Show-RBACSplash {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        WindowStartupLocation="CenterScreen" Width="440" Height="210"
+        WindowStartupLocation="CenterScreen" Width="440" Height="230"
         ShowInTaskbar="False" Topmost="True" SizeToContent="Manual">
   <Border Background="#0078D4" CornerRadius="8" Padding="24">
     <Border.Effect>
@@ -56,6 +56,7 @@ function Show-RBACSplash {
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
@@ -72,9 +73,9 @@ function Show-RBACSplash {
       <TextBlock x:Name="VersionText" Grid.Row="0" Foreground="White" Opacity="0.65"
                  FontFamily="Consolas" FontSize="11"
                  HorizontalAlignment="Right" VerticalAlignment="Top"/>
-      <TextBlock Grid.Row="2" Text="by Clidsys - Bastien Perez" Foreground="White" Opacity="0.65"
+      <TextBlock Grid.Row="4" Text="by Clidsys - Bastien Perez" Foreground="White" Opacity="0.65"
                  FontFamily="Segoe UI" FontSize="10"
-                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
+                 HorizontalAlignment="Right" Margin="0,8,0,0"/>
     </Grid>
   </Border>
 </Window>

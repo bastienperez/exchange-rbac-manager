@@ -196,6 +196,36 @@ function Remove-RBACRole {
     return (Invoke-RBACWrite -Cmdlet 'Remove-ManagementRole' -Parameters $params -DryRun:$DryRun)
 }
 
+function Add-RBACRoleEntry {
+    <#
+    .SYNOPSIS
+    Add a cmdlet (Management Role Entry) to a custom management role.
+    Identity must be in the form 'RoleName\CmdletName'.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity }
+    return (Invoke-RBACWrite -Cmdlet 'Add-ManagementRoleEntry' -Parameters $params -DryRun:$DryRun)
+}
+
+function Remove-RBACRoleEntry {
+    <#
+    .SYNOPSIS
+    Remove a cmdlet (Management Role Entry) from a custom management role.
+    Identity must be in the form 'RoleName\CmdletName'.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [switch]$DryRun
+    )
+    $params = @{ Identity = $Identity; Confirm = $false }
+    return (Invoke-RBACWrite -Cmdlet 'Remove-ManagementRoleEntry' -Parameters $params -DryRun:$DryRun)
+}
+
 function New-RBACAssignment {
     <#
     .SYNOPSIS

@@ -186,6 +186,29 @@
         </DataTrigger>
       </Style.Triggers>
     </Style>
+    <Style TargetType="DataGridCell">
+      <Setter Property="Padding" Value="14,6,14,6"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="DataGridCell">
+            <Border Padding="{TemplateBinding Padding}"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}">
+              <ContentPresenter VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsSelected" Value="True">
+          <Setter Property="Background" Value="Transparent"/>
+          <Setter Property="Foreground" Value="#201F1E"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
   </Window.Resources>
 
   <Grid>
@@ -271,15 +294,6 @@
             <TextBlock x:Name="ViewTitle" FontSize="22" FontWeight="SemiBold" Margin="0,2,0,0" Foreground="{StaticResource Ink}"/>
             <TextBlock x:Name="ViewDesc"  FontSize="13" Foreground="{StaticResource Subdued}" Margin="0,2,0,0" TextWrapping="Wrap"/>
           </StackPanel>
-          <!-- Mode badge: reflects current write mode.
-               Dry-run (default, safe): write actions only print the equivalent cmdlet.
-               Write: actions go through to Exchange Online after a confirm prompt. -->
-          <Border x:Name="ModeBadge" Grid.Column="1" VerticalAlignment="Top" Padding="8,3" CornerRadius="11"
-                  Background="#FFF4CE" BorderBrush="#D29200" BorderThickness="1"
-                  ToolTip="Dry-run: previews cmdlets without touching the tenant. Toggle in the toolbar.">
-            <TextBlock x:Name="ModeBadgeText" Text="DRY-RUN · v2" FontFamily="Consolas" FontSize="10"
-                       FontWeight="SemiBold" Foreground="#7A4F00"/>
-          </Border>
         </Grid>
       </Border>
 
@@ -323,8 +337,6 @@
             </ItemsControl.ItemsPanel>
           </ItemsControl>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
-            <Button x:Name="BtnDryRun" Content="Dry-run: on" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
-                    ToolTip="Toggle between dry-run preview and live execution"/>
             <Button x:Name="BtnFilterRow" Content="Filter: off" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
                     ToolTip="Toggle a filter input in each column header"/>
             <Button x:Name="BtnWrap" Content="Wrap: on" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
@@ -380,11 +392,47 @@
               <ItemsControl x:Name="DetailsList">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
-                    <StackPanel Margin="0,0,0,12">
+                    <StackPanel>
+                      <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                          <Setter Property="Margin" Value="0,0,0,12"/>
+                          <Style.Triggers>
+                            <!-- Compact row when there is no Key (cmdlet list, etc.) -->
+                            <DataTrigger Binding="{Binding Key}" Value="">
+                              <Setter Property="Margin" Value="0,0,0,1"/>
+                            </DataTrigger>
+                          </Style.Triggers>
+                        </Style>
+                      </StackPanel.Style>
                       <TextBlock Text="{Binding Key}" FontFamily="Consolas" FontSize="10"
-                                 Foreground="#605E5C" TextTrimming="CharacterEllipsis"/>
+                                 Foreground="#605E5C" TextTrimming="CharacterEllipsis">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding Key}" Value="">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
                       <TextBlock Text="{Binding Value}" FontSize="12" Foreground="#201F1E"
-                                 TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                 TextWrapping="Wrap">
+                        <TextBlock.Style>
+                          <Style TargetType="TextBlock">
+                            <Setter Property="Margin" Value="0,2,0,0"/>
+                            <Style.Triggers>
+                              <DataTrigger Binding="{Binding Key}" Value="">
+                                <Setter Property="Margin" Value="0,0,0,0"/>
+                              </DataTrigger>
+                              <!-- Empty value (header-only row) collapses to nothing -->
+                              <DataTrigger Binding="{Binding Value}" Value="">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                              </DataTrigger>
+                            </Style.Triggers>
+                          </Style>
+                        </TextBlock.Style>
+                      </TextBlock>
                     </StackPanel>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -496,8 +544,8 @@
             'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','VersionLabel',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
             'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost',
-            'BtnRefresh','BtnDryRun','BtnFilterRow','BtnWrap','BtnAutoFit',
-            'ModeBadge','ModeBadgeText','ItemCount',
+            'BtnRefresh','BtnFilterRow','BtnWrap','BtnAutoFit',
+            'ItemCount',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder',
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsList','BtnDetailsClose',
             'SelectionCount','ActionsHost',
@@ -641,60 +689,14 @@
     }
 
     # ---------------- Write-mode helpers ----------------
-    $script:DryRun = $true   # default: safe; user toggles to live mode in the toolbar
-
-    function Update-ModeBadge {
-        if ($script:DryRun) {
-            $UI.ModeBadgeText.Text = 'DRY-RUN | v2'
-            $UI.ModeBadge.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FFF4CE')
-            $UI.ModeBadge.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#D29200')
-            $UI.ModeBadgeText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#7A4F00')
-            $UI.ModeBadge.ToolTip = 'Dry-run: previews the cmdlets without touching the tenant. Toggle in the toolbar.'
-            $UI.BtnDryRun.Content = 'Dry-run: on'
-        }
-        else {
-            $UI.ModeBadgeText.Text = 'WRITE | v2'
-            $UI.ModeBadge.Background = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#FDE7E9')
-            $UI.ModeBadge.BorderBrush = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#A4262C')
-            $UI.ModeBadgeText.Foreground = [System.Windows.Media.BrushConverter]::new().ConvertFromString('#A4262C')
-            $UI.ModeBadge.ToolTip = 'Write mode: actions go through to Exchange Online after a confirm prompt.'
-            $UI.BtnDryRun.Content = 'Dry-run: off'
-        }
-    }
-
-    function Toggle-DryRun {
-        if (-not $script:DryRun) {
-            # Switching FROM live TO dry-run is always fine. Switching INTO live needs a heads-up.
-            $script:DryRun = $true
-            Update-ModeBadge
-            Set-Status 'Dry-run mode is on. Write actions will preview only.' 'info'
-            return
-        }
-        $msg = "Switch to live WRITE mode?`n`nWrite actions will execute against the connected tenant after a per-action confirm."
-        $r = [System.Windows.MessageBox]::Show(
-                $msg, 'Switch to write mode',
-                [System.Windows.MessageBoxButton]::OKCancel,
-                [System.Windows.MessageBoxImage]::Warning)
-        if ($r -eq [System.Windows.MessageBoxResult]::OK) {
-            $script:DryRun = $false
-            Update-ModeBadge
-            Set-Status 'Write mode is on. Actions will hit the tenant.' 'warn'
-        }
-    }
-
-    function Confirm-WriteAction {
-        param(
-            [Parameter(Mandatory)] [string]$Title,
-            [Parameter(Mandatory)] [string]$Message
-        )
-        $r = [System.Windows.MessageBox]::Show(
-                $Message, $Title,
-                [System.Windows.MessageBoxButton]::OKCancel,
-                [System.Windows.MessageBoxImage]::Question)
-        return ($r -eq [System.Windows.MessageBoxResult]::OK)
-    }
+    # All write actions go through Show-CmdletPreview which exposes
+    # "Run cmdlet" / "Copy cmdlet" / "Cancel" buttons — no global toggle needed.
 
     function Show-CmdletPreview {
+        <#
+        Shows the cmdlet that would be run. Returns $true if the user clicked
+        "Run cmdlet"; otherwise $false (Copy cmdlet leaves the dialog open).
+        #>
         param(
             [Parameter(Mandatory)] [string]$Title,
             [Parameter(Mandatory)] [string]$Cmdlet
@@ -702,7 +704,7 @@
         $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="640" Height="320" WindowStartupLocation="CenterOwner"
+        Title="" Width="680" Height="340" WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize" SizeToContent="Manual">
   <Grid Margin="14">
     <Grid.RowDefinitions>
@@ -710,15 +712,27 @@
       <RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
-    <TextBlock Grid.Row="0" Text="Equivalent PowerShell cmdlet (dry-run, not executed)"
+    <TextBlock Grid.Row="0" Text="Cmdlet that will be run on Exchange Online"
                FontWeight="SemiBold" Margin="0,0,0,6"/>
     <TextBox x:Name="CmdletText" Grid.Row="1" AcceptsReturn="True" TextWrapping="Wrap"
              FontFamily="Consolas" FontSize="12" IsReadOnly="True"
              VerticalScrollBarVisibility="Auto"/>
-    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-      <Button x:Name="BtnCopy" Content="Copy" Width="90" Height="28" Margin="0,0,8,0"/>
-      <Button x:Name="BtnClose" Content="Close" Width="90" Height="28" IsDefault="True" IsCancel="True"/>
-    </StackPanel>
+    <Grid Grid.Row="2" Margin="0,10,0,0">
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="Auto"/>
+        <ColumnDefinition Width="Auto"/>
+      </Grid.ColumnDefinitions>
+      <Button x:Name="BtnCopy" Grid.Column="0" Content="Copy cmdlet" Width="120" Height="32"
+              Background="White" BorderBrush="#C8C6C4" BorderThickness="1" Foreground="#201F1E" Cursor="Hand"/>
+      <Button x:Name="BtnCancel" Grid.Column="2" Content="Cancel" Width="90" Height="32" Margin="0,0,8,0"
+              Background="White" BorderBrush="#C8C6C4" BorderThickness="1" Foreground="#201F1E" Cursor="Hand"
+              IsCancel="True"/>
+      <Button x:Name="BtnRun" Grid.Column="3" Content="Run cmdlet" Width="130" Height="32"
+              Background="#0078D4" BorderBrush="#0078D4" BorderThickness="1" Foreground="White"
+              FontWeight="SemiBold" Cursor="Hand" IsDefault="True"/>
+    </Grid>
   </Grid>
 </Window>
 '@
@@ -726,13 +740,21 @@
         $w = [System.Windows.Markup.XamlReader]::Load($reader)
         $w.Title = $Title
         $w.Owner = $window
-        $tb   = $w.FindName('CmdletText')
-        $cp   = $w.FindName('BtnCopy')
-        $cl   = $w.FindName('BtnClose')
+        $tb     = $w.FindName('CmdletText')
+        $btnCp  = $w.FindName('BtnCopy')
+        $btnCa  = $w.FindName('BtnCancel')
+        $btnRn  = $w.FindName('BtnRun')
         $tb.Text = $Cmdlet
-        $cp.Add_Click({ try { [System.Windows.Clipboard]::SetText($tb.Text); Set-Status 'Cmdlet copied to clipboard.' 'ok' } catch {} })
-        $cl.Add_Click({ $w.Close() })
+
+        $script:_PreviewRun = $false
+        $btnCp.Add_Click({
+            try { [System.Windows.Clipboard]::SetText($tb.Text); Set-Status 'Cmdlet copied to clipboard.' 'ok' } catch {}
+        })
+        $btnCa.Add_Click({ $w.Close() })
+        $btnRn.Add_Click({ $script:_PreviewRun = $true; $w.Close() })
+
         $null = $w.ShowDialog()
+        return $script:_PreviewRun
     }
 
     function Show-RoleGroupForm {
@@ -750,14 +772,15 @@
         $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="560" Height="620" WindowStartupLocation="CenterOwner"
+        Title="" Width="620" Height="720" WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
   <Grid Margin="14">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/><RowDefinition Height="Auto"/>
-      <RowDefinition Height="*"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
+      <RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
     <TextBlock x:Name="LblName" Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
@@ -765,19 +788,53 @@
     <TextBlock Grid.Row="2" Text="Description" FontWeight="SemiBold"/>
     <TextBox  x:Name="TxtDesc" Grid.Row="3" Height="48" Margin="0,4,0,10"
               AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-    <TextBlock Grid.Row="4" Text="Roles (one per line)" FontWeight="SemiBold" VerticalAlignment="Top"/>
-    <TextBox  x:Name="TxtRoles" Grid.Row="4" Margin="0,18,0,10"
-              AcceptsReturn="True" TextWrapping="NoWrap"
-              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-              FontFamily="Consolas"/>
-    <TextBlock Grid.Row="5" Text="Members (one per line, UPN or alias)" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtMembers" Grid.Row="6" Margin="0,4,0,10"
-              AcceptsReturn="True" TextWrapping="NoWrap"
-              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-              FontFamily="Consolas"/>
-    <CheckBox x:Name="ChkIncludeMembers" Grid.Row="7" Content="Include members from source"
+
+    <!-- Roles -->
+    <TextBlock Grid.Row="4" Text="Roles" FontWeight="SemiBold" Margin="0,4,0,4"/>
+    <Grid Grid.Row="5" Margin="0,0,0,10">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Grid Grid.Row="0" Margin="0,0,0,4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <ComboBox x:Name="CmbRoleAdd" Grid.Column="0" Height="28" IsEditable="True"
+                  StaysOpenOnEdit="True"
+                  ToolTip="Pick from existing management roles or type a name"/>
+        <Button   x:Name="BtnRoleAdd"    Grid.Column="1" Content="Add" Width="80" Height="28" Margin="6,0,0,0"/>
+        <Button   x:Name="BtnRoleRemove" Grid.Column="2" Content="Remove" Width="80" Height="28" Margin="6,0,0,0"/>
+      </Grid>
+      <ListBox x:Name="LstRoles" Grid.Row="1" SelectionMode="Extended" FontFamily="Consolas" FontSize="12"/>
+    </Grid>
+
+    <!-- Members -->
+    <TextBlock Grid.Row="6" Text="Members (UPN or alias)" FontWeight="SemiBold" Margin="0,4,0,4"/>
+    <Grid Grid.Row="7" Margin="0,0,0,10">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Grid Grid.Row="0" Margin="0,0,0,4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBox x:Name="TxtMemberAdd"  Grid.Column="0" Height="28" VerticalContentAlignment="Center"
+                 ToolTip="Type a UPN or mailbox alias and press Enter or Add"/>
+        <Button  x:Name="BtnMemberAdd"    Grid.Column="1" Content="Add"    Width="80" Height="28" Margin="6,0,0,0" IsDefault="False"/>
+        <Button  x:Name="BtnMemberRemove" Grid.Column="2" Content="Remove" Width="80" Height="28" Margin="6,0,0,0"/>
+      </Grid>
+      <ListBox x:Name="LstMembers" Grid.Row="1" SelectionMode="Extended" FontFamily="Consolas" FontSize="12"/>
+    </Grid>
+
+    <CheckBox x:Name="ChkIncludeMembers" Grid.Row="8" Content="Include members from source"
               Margin="0,0,0,10" Visibility="Collapsed"/>
-    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
+    <StackPanel Grid.Row="9" Orientation="Horizontal" HorizontalAlignment="Right">
       <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
       <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
     </StackPanel>
@@ -790,15 +847,79 @@
         $w.Owner = $window
 
         $UIDlg = @{}
-        foreach ($n in @('LblName','TxtName','TxtDesc','TxtRoles','TxtMembers','ChkIncludeMembers','BtnOk','BtnCancel')) {
+        foreach ($n in @('LblName','TxtName','TxtDesc',
+                         'CmbRoleAdd','BtnRoleAdd','BtnRoleRemove','LstRoles',
+                         'TxtMemberAdd','BtnMemberAdd','BtnMemberRemove','LstMembers',
+                         'ChkIncludeMembers','BtnOk','BtnCancel')) {
             $UIDlg[$n] = $w.FindName($n)
         }
-        $UIDlg.LblName.Text  = $NameLabel
-        $UIDlg.TxtName.Text  = $DefaultName
+        $UIDlg.LblName.Text       = $NameLabel
+        $UIDlg.TxtName.Text       = $DefaultName
         $UIDlg.TxtName.IsReadOnly = $NameReadOnly
-        $UIDlg.TxtDesc.Text  = $DefaultDescription
-        $UIDlg.TxtRoles.Text   = ($DefaultRoles   -join "`r`n")
-        $UIDlg.TxtMembers.Text = ($DefaultMembers -join "`r`n")
+        $UIDlg.TxtDesc.Text       = $DefaultDescription
+
+        # Backing collections for the two ListBoxes (ObservableCollection so Add/Remove
+        # are reflected immediately without rebinding ItemsSource).
+        $rolesCol   = New-Object System.Collections.ObjectModel.ObservableCollection[string]
+        $membersCol = New-Object System.Collections.ObjectModel.ObservableCollection[string]
+        foreach ($r in $DefaultRoles)   { if ($r) { $rolesCol.Add([string]$r) } }
+        foreach ($m in $DefaultMembers) { if ($m) { $membersCol.Add([string]$m) } }
+        $UIDlg.LstRoles.ItemsSource   = $rolesCol
+        $UIDlg.LstMembers.ItemsSource = $membersCol
+
+        # Populate the role dropdown with cached/fetched management roles.
+        try {
+            if (-not $script:Cache.Roles -or @($script:Cache.Roles).Count -eq 0) {
+                $script:Cache.Roles = Get-RBACRoles
+            }
+            $UIDlg.CmbRoleAdd.ItemsSource = @($script:Cache.Roles | ForEach-Object Name | Sort-Object -Unique)
+        }
+        catch { $UIDlg.CmbRoleAdd.ItemsSource = @() }
+
+        $addRole = {
+            $val = "$($UIDlg.CmbRoleAdd.Text)".Trim()
+            if (-not $val) { return }
+            if ($rolesCol -notcontains $val) { $rolesCol.Add($val) }
+            $UIDlg.CmbRoleAdd.Text = ''
+            $UIDlg.CmbRoleAdd.Focus() | Out-Null
+        }
+        $removeRoles = {
+            $sel = @($UIDlg.LstRoles.SelectedItems | ForEach-Object { "$_" })
+            foreach ($s in $sel) { $null = $rolesCol.Remove($s) }
+        }
+        $UIDlg.BtnRoleAdd.Add_Click($addRole)
+        $UIDlg.BtnRoleRemove.Add_Click($removeRoles)
+        $UIDlg.CmbRoleAdd.Add_KeyDown({
+            param($s, $e)
+            if ($e.Key -eq 'Return') { & $addRole; $e.Handled = $true }
+        })
+        $UIDlg.LstRoles.Add_KeyDown({
+            param($s, $e)
+            if ($e.Key -eq 'Delete') { & $removeRoles; $e.Handled = $true }
+        })
+
+        $addMember = {
+            $val = "$($UIDlg.TxtMemberAdd.Text)".Trim()
+            if (-not $val) { return }
+            if ($membersCol -notcontains $val) { $membersCol.Add($val) }
+            $UIDlg.TxtMemberAdd.Text = ''
+            $UIDlg.TxtMemberAdd.Focus() | Out-Null
+        }
+        $removeMembers = {
+            $sel = @($UIDlg.LstMembers.SelectedItems | ForEach-Object { "$_" })
+            foreach ($s in $sel) { $null = $membersCol.Remove($s) }
+        }
+        $UIDlg.BtnMemberAdd.Add_Click($addMember)
+        $UIDlg.BtnMemberRemove.Add_Click($removeMembers)
+        $UIDlg.TxtMemberAdd.Add_KeyDown({
+            param($s, $e)
+            if ($e.Key -eq 'Return') { & $addMember; $e.Handled = $true }
+        })
+        $UIDlg.LstMembers.Add_KeyDown({
+            param($s, $e)
+            if ($e.Key -eq 'Delete') { & $removeMembers; $e.Handled = $true }
+        })
+
         if ($ShowIncludeMembers) {
             $UIDlg.ChkIncludeMembers.Visibility = 'Visible'
             $UIDlg.ChkIncludeMembers.IsChecked  = $DefaultIncludeMembers
@@ -813,13 +934,11 @@
                     [System.Windows.MessageBoxImage]::Warning) | Out-Null
                 return
             }
-            $rolesArr = @($UIDlg.TxtRoles.Text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
-            $memArr   = @($UIDlg.TxtMembers.Text -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
             $script:_FormResult = [pscustomobject]@{
                 Name           = $name
                 Description    = "$($UIDlg.TxtDesc.Text)".Trim()
-                Roles          = $rolesArr
-                Members        = $memArr
+                Roles          = @($rolesCol)
+                Members        = @($membersCol)
                 IncludeMembers = [bool]$UIDlg.ChkIncludeMembers.IsChecked
             }
             $w.DialogResult = $true
@@ -838,29 +957,58 @@
             [string]$DefaultName        = '',
             [string]$DefaultParent      = '',
             [string]$DefaultDescription = '',
+            [string[]]$DefaultCmdlets   = @(),
             [bool]$NameReadOnly         = $false,
-            [bool]$ParentReadOnly       = $false
+            [bool]$ParentReadOnly       = $false,
+            [bool]$ShowCmdlets          = $false
         )
         $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="" Width="520" Height="360" WindowStartupLocation="CenterOwner"
+        Title="" Width="600" Height="640" WindowStartupLocation="CenterOwner"
         ResizeMode="CanResize">
   <Grid Margin="14">
     <Grid.RowDefinitions>
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="120"/>
       <RowDefinition Height="Auto"/><RowDefinition Height="*"/>
       <RowDefinition Height="Auto"/>
     </Grid.RowDefinitions>
     <TextBlock Grid.Row="0" Text="Name" FontWeight="SemiBold"/>
     <TextBox  x:Name="TxtName" Grid.Row="1" Height="26" Margin="0,4,0,10"/>
     <TextBlock Grid.Row="2" Text="Parent role (built-in or custom)" FontWeight="SemiBold"/>
-    <TextBox  x:Name="TxtParent" Grid.Row="3" Height="26" Margin="0,4,0,10"/>
+    <ComboBox x:Name="TxtParent" Grid.Row="3" Height="26" Margin="0,4,0,10"
+              IsEditable="True" StaysOpenOnEdit="True"
+              ToolTip="Type to search or pick from the list of existing management roles."/>
     <TextBlock Grid.Row="4" Text="Description" FontWeight="SemiBold"/>
     <TextBox  x:Name="TxtDesc" Grid.Row="5" Margin="0,4,0,10"
               AcceptsReturn="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto"/>
-    <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+
+    <!-- Cmdlets editor (only shown when editing) -->
+    <TextBlock x:Name="LblCmdlets" Grid.Row="6" Text="Cmdlets" FontWeight="SemiBold"
+               Margin="0,4,0,4" Visibility="Collapsed"/>
+    <Grid x:Name="GrdCmdlets" Grid.Row="7" Margin="0,0,0,10" Visibility="Collapsed">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <Grid Grid.Row="0" Margin="0,0,0,4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <ComboBox x:Name="CmbCmdletAdd" Grid.Column="0" Height="28" IsEditable="True"
+                  StaysOpenOnEdit="True"
+                  ToolTip="Pick from available Exchange Online cmdlets or type a name"/>
+        <Button   x:Name="BtnCmdletAdd"    Grid.Column="1" Content="Add"    Width="80" Height="28" Margin="6,0,0,0"/>
+        <Button   x:Name="BtnCmdletRemove" Grid.Column="2" Content="Remove" Width="80" Height="28" Margin="6,0,0,0"/>
+      </Grid>
+      <ListBox x:Name="LstCmdlets" Grid.Row="1" SelectionMode="Extended" FontFamily="Consolas" FontSize="12"/>
+    </Grid>
+
+    <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
       <Button x:Name="BtnOk"     Content="OK"     Width="90" Height="28" Margin="0,0,8,0" IsDefault="True"/>
       <Button x:Name="BtnCancel" Content="Cancel" Width="90" Height="28" IsCancel="True"/>
     </StackPanel>
@@ -870,12 +1018,65 @@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
         $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = $Title; $w.Owner = $window
         $UIDlg = @{}
-        foreach ($n in @('TxtName','TxtParent','TxtDesc','BtnOk','BtnCancel')) { $UIDlg[$n] = $w.FindName($n) }
+        foreach ($n in @('TxtName','TxtParent','TxtDesc',
+                         'LblCmdlets','GrdCmdlets','CmbCmdletAdd','BtnCmdletAdd','BtnCmdletRemove','LstCmdlets',
+                         'BtnOk','BtnCancel')) { $UIDlg[$n] = $w.FindName($n) }
         $UIDlg.TxtName.Text   = $DefaultName
-        $UIDlg.TxtParent.Text = $DefaultParent
         $UIDlg.TxtDesc.Text   = $DefaultDescription
-        $UIDlg.TxtName.IsReadOnly   = $NameReadOnly
-        $UIDlg.TxtParent.IsReadOnly = $ParentReadOnly
+        $UIDlg.TxtName.IsReadOnly = $NameReadOnly
+
+        # Populate the parent ComboBox with the cached list of management roles
+        # (loaded from the Roles view, or fetched on-demand if missing).
+        try {
+            if (-not $script:Cache.Roles -or @($script:Cache.Roles).Count -eq 0) {
+                $script:Cache.Roles = Get-RBACRoles
+            }
+            $parentNames = @($script:Cache.Roles | ForEach-Object Name | Sort-Object -Unique)
+            $UIDlg.TxtParent.ItemsSource = $parentNames
+        }
+        catch { $UIDlg.TxtParent.ItemsSource = @() }
+        $UIDlg.TxtParent.Text       = $DefaultParent
+        $UIDlg.TxtParent.IsEnabled  = -not $ParentReadOnly
+
+        # Cmdlets editor: backing collection + Add/Remove handlers.
+        $cmdletsCol = New-Object System.Collections.ObjectModel.ObservableCollection[string]
+        foreach ($c in $DefaultCmdlets) { if ($c) { $cmdletsCol.Add([string]$c) } }
+        $UIDlg.LstCmdlets.ItemsSource = $cmdletsCol
+
+        if ($ShowCmdlets) {
+            $UIDlg.LblCmdlets.Visibility = 'Visible'
+            $UIDlg.GrdCmdlets.Visibility = 'Visible'
+            # Suggest from the same source as the Command Lookup view (in-memory EOM session).
+            try {
+                Ensure-CommandSuggestions
+                if ($script:CommandSuggestions) {
+                    $UIDlg.CmbCmdletAdd.ItemsSource = $script:CommandSuggestions
+                }
+            }
+            catch { }
+
+            $addCmdlet = {
+                $val = "$($UIDlg.CmbCmdletAdd.Text)".Trim()
+                if (-not $val) { return }
+                if ($cmdletsCol -notcontains $val) { $cmdletsCol.Add($val) }
+                $UIDlg.CmbCmdletAdd.Text = ''
+                $UIDlg.CmbCmdletAdd.Focus() | Out-Null
+            }
+            $removeCmdlets = {
+                $sel = @($UIDlg.LstCmdlets.SelectedItems | ForEach-Object { "$_" })
+                foreach ($s in $sel) { $null = $cmdletsCol.Remove($s) }
+            }
+            $UIDlg.BtnCmdletAdd.Add_Click($addCmdlet)
+            $UIDlg.BtnCmdletRemove.Add_Click($removeCmdlets)
+            $UIDlg.CmbCmdletAdd.Add_KeyDown({
+                param($s, $e)
+                if ($e.Key -eq 'Return') { & $addCmdlet; $e.Handled = $true }
+            })
+            $UIDlg.LstCmdlets.Add_KeyDown({
+                param($s, $e)
+                if ($e.Key -eq 'Delete') { & $removeCmdlets; $e.Handled = $true }
+            })
+        }
 
         $script:_FormResult = $null
         $UIDlg.BtnOk.Add_Click({
@@ -891,6 +1092,7 @@
                 Name        = $name
                 Parent      = $parent
                 Description = "$($UIDlg.TxtDesc.Text)".Trim()
+                Cmdlets     = @($cmdletsCol)
             }
             $w.DialogResult = $true; $w.Close()
         })
@@ -1071,39 +1273,53 @@
     }
 
     function Handle-WriteResult {
+        <#
+        Takes the dry-run result of a write action, shows the cmdlet preview to
+        the user and — if they click "Run cmdlet" — invokes the supplied
+        RunBlock to execute the action live.
+        Returns $true when the live action ran successfully, $false otherwise.
+        #>
         param(
             [Parameter(Mandatory)] $Result,
             [Parameter(Mandatory)] [string]$SuccessMsg,
-            [Parameter(Mandatory)] [string]$DryRunTitle
+            [Parameter(Mandatory)] [string]$Title,
+            [Parameter(Mandatory)] [scriptblock]$RunBlock
         )
-        if ($null -eq $Result) { return }
+        if ($null -eq $Result) { return $false }
+
+        # Aggregate preview text from a single result or an array of step results.
+        $previewText = ''
         if ($Result -is [System.Array]) {
-            # Set-RBACRoleGroup returns an array of step results
             $errs = @($Result | Where-Object { $_.Error })
             if ($errs.Count -gt 0) {
                 Set-Status "Error: $($errs[0].Error.Exception.Message)" 'error'
-                return
+                return $false
             }
-            $previewLines = @($Result | ForEach-Object { $_.Preview } | Where-Object { $_ })
-            if ($script:DryRun) {
-                Show-CmdletPreview -Title $DryRunTitle -Cmdlet ($previewLines -join "`r`n")
-                Set-Status 'Dry-run: cmdlet preview shown. Nothing executed.' 'info'
-            }
-            else {
-                Set-Status $SuccessMsg 'ok'
-            }
-            return
+            $previewText = (@($Result | ForEach-Object { $_.Preview } | Where-Object { $_ })) -join "`r`n"
         }
-        if ($Result.Error) {
+        elseif ($Result.Error) {
             Set-Status "Error: $($Result.Error.Exception.Message)" 'error'
-            return
-        }
-        if ($script:DryRun) {
-            Show-CmdletPreview -Title $DryRunTitle -Cmdlet $Result.Preview
-            Set-Status 'Dry-run: cmdlet preview shown. Nothing executed.' 'info'
+            return $false
         }
         else {
+            $previewText = [string]$Result.Preview
+        }
+
+        # Always show the preview; the user picks Run / Copy / Cancel.
+        if (-not (Show-CmdletPreview -Title $Title -Cmdlet $previewText)) {
+            Set-Status 'Cancelled. Nothing executed.' 'info'
+            return $false
+        }
+
+        # User chose Run: execute the live action.
+        try {
+            & $RunBlock
             Set-Status $SuccessMsg 'ok'
+            return $true
+        }
+        catch {
+            Set-Status "Error: $($_.Exception.Message)" 'error'
+            return $false
         }
     }
 
@@ -1495,8 +1711,33 @@
             if ([string]::IsNullOrEmpty($val)) { $val = '-' }
             $rows.Add([PSCustomObject]@{ Key = $p.Name; Value = $val })
         }
+
+        # In the Roles view, append the role's cmdlets below the property rows.
+        # Cache per role so reselecting the same role doesn't re-hit the service.
+        if ($script:CurrentView -eq 'Roles' -and $Item.Name) {
+            if (-not $script:Cache.RoleCmdlets) { $script:Cache.RoleCmdlets = @{} }
+            $cmdletNames = $script:Cache.RoleCmdlets[$Item.Name]
+            if (-not $cmdletNames) {
+                try {
+                    $entries = Get-ManagementRoleEntry -Identity "$($Item.Name)\*" -ErrorAction Stop
+                    $cmdletNames = @($entries | ForEach-Object Name | Sort-Object)
+                    $script:Cache.RoleCmdlets[$Item.Name] = $cmdletNames
+                }
+                catch { $cmdletNames = @() }
+            }
+            if ($cmdletNames.Count -gt 0) {
+                $rows.Add([PSCustomObject]@{
+                    Key   = "Cmdlets ($($cmdletNames.Count))"
+                    Value = ''
+                })
+                foreach ($n in $cmdletNames) {
+                    $rows.Add([PSCustomObject]@{ Key = ''; Value = $n })
+                }
+            }
+        }
+
         $UI.DetailsList.ItemsSource = $rows
-        $UI.DetailsCol.Width = New-Object System.Windows.GridLength 320
+        $UI.DetailsCol.Width = New-Object System.Windows.GridLength 360
         $UI.DetailsPanel.Visibility = 'Visible'
     }
     function Hide-Details {
@@ -2240,7 +2481,6 @@
                 $list += (New-ActionButton -Label 'Edit'                -Style 'ActionBtn'  -OnClick { Do-EditRole })
                 $list += (New-ActionButton -Label 'Copy'                -Style 'ActionBtn'  -OnClick { Do-CopyRole })
                 $list += (New-ActionButton -Label 'Delete'              -Style 'WarnBtn'    -OnClick { Do-DeleteRole })
-                $list += (New-ActionButton -Label 'View Cmdlets'        -Style 'ActionBtn'  -OnClick { Show-RoleCmdlets })
                 $list += (New-ActionButton -Label 'Export CSV'          -Style 'ActionBtn'  -OnClick { Export-CurrentView })
             }
             'Assignments' {
@@ -2295,19 +2535,21 @@
     }
 
     # ---------------- Role Group write actions ----------------
+    # All handlers follow the same pattern:
+    #   1. Build the dry-run preview
+    #   2. Show it to the user with Run / Copy / Cancel buttons
+    #   3. Run live only if the user clicks "Run cmdlet"
+
     function Do-NewRoleGroup {
         if (-not (Require-Connected)) { return }
         $form = Show-RoleGroupForm -Title 'New Role Group'
         if (-not $form) { return }
-        if ($script:DryRun) {
-            $r = New-RBACRoleGroup -Name $form.Name -Description $form.Description -Roles $form.Roles -Members $form.Members -DryRun
+        $r = New-RBACRoleGroup -Name $form.Name -Description $form.Description -Roles $form.Roles -Members $form.Members -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'New-RoleGroup' `
+                -SuccessMsg "Created role group '$($form.Name)'." -RunBlock {
+            New-RBACRoleGroup -Name $form.Name -Description $form.Description -Roles $form.Roles -Members $form.Members
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Create role group' -Message "Create '$($form.Name)' in the connected tenant?")) { return }
-            $r = New-RBACRoleGroup -Name $form.Name -Description $form.Description -Roles $form.Roles -Members $form.Members
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Created role group '$($form.Name)'." -DryRunTitle 'New-RoleGroup (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'RoleGroups' }
+        if ($ok) { Load-ViewData -View 'RoleGroups' }
     }
 
     function Do-EditRoleGroup {
@@ -2332,21 +2574,12 @@
             Description = $form.Description
             Members     = $form.Members
         }
-        if ($script:DryRun) {
-            $params.DryRun = $true
-            $r = Set-RBACRoleGroup @params
+        $r = Set-RBACRoleGroup @params -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Set-RoleGroup' `
+                -SuccessMsg "Updated role group '$($sel.Name)'." -RunBlock {
+            Set-RBACRoleGroup @params
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Update role group' -Message "Update '$($sel.Name)' (description and member list)?`nNote: role list and rename are not edited here.")) { return }
-            $r = Set-RBACRoleGroup @params
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Updated role group '$($sel.Name)'." -DryRunTitle 'Set-RoleGroup (dry-run)'
-        if (-not $script:DryRun) {
-            $hasErr = $false
-            if ($r -is [System.Array]) { $hasErr = @($r | Where-Object { $_.Error }).Count -gt 0 }
-            elseif ($r.Error) { $hasErr = $true }
-            if (-not $hasErr) { Load-ViewData -View 'RoleGroups' }
-        }
+        if ($ok) { Load-ViewData -View 'RoleGroups' }
     }
 
     function Do-CopyRoleGroup {
@@ -2365,15 +2598,12 @@
                     -ShowIncludeMembers   $true `
                     -DefaultIncludeMembers $false
         if (-not $form) { return }
-        if ($script:DryRun) {
-            $r = Copy-RBACRoleGroup -SourceName $sel.Name -NewName $form.Name -NewDescription $form.Description -IncludeMembers:$form.IncludeMembers -DryRun
+        $r = Copy-RBACRoleGroup -SourceName $sel.Name -NewName $form.Name -NewDescription $form.Description -IncludeMembers:$form.IncludeMembers -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'New-RoleGroup (copy)' `
+                -SuccessMsg "Copied to '$($form.Name)'." -RunBlock {
+            Copy-RBACRoleGroup -SourceName $sel.Name -NewName $form.Name -NewDescription $form.Description -IncludeMembers:$form.IncludeMembers
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Copy role group' -Message "Create '$($form.Name)' as a copy of '$($sel.Name)'?")) { return }
-            $r = Copy-RBACRoleGroup -SourceName $sel.Name -NewName $form.Name -NewDescription $form.Description -IncludeMembers:$form.IncludeMembers
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Copied to '$($form.Name)'." -DryRunTitle 'New-RoleGroup (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'RoleGroups' }
+        if ($ok) { Load-ViewData -View 'RoleGroups' }
     }
 
     function Do-DeleteRoleGroup {
@@ -2383,35 +2613,34 @@
         if ($sel.Origin -eq 'Built-in') {
             Set-Status "Built-in role groups can't be deleted." 'warn'; return
         }
-        if ($script:DryRun) {
-            $r = Remove-RBACRoleGroup -Identity $sel.Name -DryRun
+        $r = Remove-RBACRoleGroup -Identity $sel.Name -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Remove-RoleGroup' `
+                -SuccessMsg "Deleted '$($sel.Name)'." -RunBlock {
+            Remove-RBACRoleGroup -Identity $sel.Name
         }
-        else {
-            $msg = "Delete role group '$($sel.Name)' permanently?`n`nThis cannot be undone. Existing role assignments referencing this group will be removed too."
-            if (-not (Confirm-WriteAction -Title 'Delete role group' -Message $msg)) { return }
-            $r = Remove-RBACRoleGroup -Identity $sel.Name
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Deleted '$($sel.Name)'." -DryRunTitle 'Remove-RoleGroup (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'RoleGroups' }
+        if ($ok) { Load-ViewData -View 'RoleGroups' }
     }
 
     # ---------------- Role write actions ----------------
     function Do-NewRole {
         if (-not (Require-Connected)) { return }
-        $form = Show-RoleForm -Title 'New management role (from parent)'
+        # If a role is selected in the grid, suggest it as the parent.
+        $defaultParent = ''
+        $sel = $UI.MainGrid.SelectedItem
+        if ($sel -and $sel.Name -and $script:CurrentView -eq 'Roles') {
+            $defaultParent = "$($sel.Name)"
+        }
+        $form = Show-RoleForm -Title 'New management role (from parent)' -DefaultParent $defaultParent
         if (-not $form) { return }
         if (-not $form.Parent) {
             Set-Status 'Parent role is required to create a new role.' 'warn'; return
         }
-        if ($script:DryRun) {
-            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description -DryRun
+        $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'New-ManagementRole' `
+                -SuccessMsg "Created role '$($form.Name)'." -RunBlock {
+            New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Create role' -Message "Create role '$($form.Name)' as a child of '$($form.Parent)'?")) { return }
-            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Created role '$($form.Name)'." -DryRunTitle 'New-ManagementRole (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+        if ($ok) { Load-ViewData -View 'Roles' }
     }
 
     function Do-EditRole {
@@ -2421,23 +2650,75 @@
         if ($sel.Origin -eq 'Built-in') {
             Set-Status "Built-in roles can't be edited." 'warn'; return
         }
+        # Fetch the current cmdlets so the user can edit the list. Cache per role.
+        if (-not $script:Cache.RoleCmdlets) { $script:Cache.RoleCmdlets = @{} }
+        $currentCmdlets = $script:Cache.RoleCmdlets[$sel.Name]
+        if (-not $currentCmdlets) {
+            try {
+                $currentCmdlets = @(
+                    Get-ManagementRoleEntry -Identity "$($sel.Name)\*" -ErrorAction Stop |
+                        ForEach-Object Name | Sort-Object
+                )
+                $script:Cache.RoleCmdlets[$sel.Name] = $currentCmdlets
+            }
+            catch { $currentCmdlets = @() }
+        }
+
         $form = Show-RoleForm `
                     -Title              "Edit role: $($sel.Name)" `
                     -DefaultName        $sel.Name `
                     -DefaultParent      "$($sel.Parent)" `
                     -DefaultDescription "$($sel.Description)" `
+                    -DefaultCmdlets     $currentCmdlets `
                     -NameReadOnly       $true `
-                    -ParentReadOnly     $true
+                    -ParentReadOnly     $true `
+                    -ShowCmdlets        $true
         if (-not $form) { return }
-        if ($script:DryRun) {
+
+        # Diff cmdlets: figure out what to add and what to remove.
+        $newCmdlets = @($form.Cmdlets)
+        $toAdd    = @($newCmdlets    | Where-Object { $currentCmdlets -notcontains $_ })
+        $toRemove = @($currentCmdlets | Where-Object { $newCmdlets    -notcontains $_ })
+        $descChanged = ($form.Description -ne "$($sel.Description)")
+
+        if (-not $descChanged -and $toAdd.Count -eq 0 -and $toRemove.Count -eq 0) {
+            Set-Status 'Nothing to update.' 'info'
+            return
+        }
+
+        # Build a combined preview that aggregates description + entry deltas.
+        $previewLines = New-Object System.Collections.Generic.List[string]
+        if ($descChanged) {
             $r = Set-RBACRole -Identity $sel.Name -Description $form.Description -DryRun
+            if ($r.Preview) { $previewLines.Add($r.Preview) }
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Update role' -Message "Update description of role '$($sel.Name)'?")) { return }
-            $r = Set-RBACRole -Identity $sel.Name -Description $form.Description
+        foreach ($c in $toAdd) {
+            $r = Add-RBACRoleEntry -Identity "$($sel.Name)\$c" -DryRun
+            if ($r.Preview) { $previewLines.Add($r.Preview) }
         }
-        Handle-WriteResult -Result $r -SuccessMsg "Updated role '$($sel.Name)'." -DryRunTitle 'Set-ManagementRole (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+        foreach ($c in $toRemove) {
+            $r = Remove-RBACRoleEntry -Identity "$($sel.Name)\$c" -DryRun
+            if ($r.Preview) { $previewLines.Add($r.Preview) }
+        }
+        $combined = [pscustomobject]@{
+            Preview  = ($previewLines -join "`r`n")
+            Result   = $null
+            Executed = $false
+            Error    = $null
+        }
+
+        $ok = Handle-WriteResult -Result $combined -Title 'Edit role (Set + Add/Remove entries)' `
+                -SuccessMsg "Updated role '$($sel.Name)' ($($toAdd.Count) cmdlet(s) added, $($toRemove.Count) removed)." -RunBlock {
+            if ($descChanged) {
+                Set-RBACRole -Identity $sel.Name -Description $form.Description | Out-Null
+            }
+            foreach ($c in $toAdd)    { Add-RBACRoleEntry    -Identity "$($sel.Name)\$c" | Out-Null }
+            foreach ($c in $toRemove) { Remove-RBACRoleEntry -Identity "$($sel.Name)\$c" | Out-Null }
+        }
+        if ($ok) {
+            $script:Cache.RoleCmdlets.Remove($sel.Name) | Out-Null
+            Load-ViewData -View 'Roles'
+        }
     }
 
     function Do-CopyRole {
@@ -2451,15 +2732,12 @@
                     -DefaultDescription "$($sel.Description) (copy of $($sel.Name))".Trim() `
                     -ParentReadOnly     $true
         if (-not $form) { return }
-        if ($script:DryRun) {
-            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description -DryRun
+        $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'New-ManagementRole (copy)' `
+                -SuccessMsg "Copied role to '$($form.Name)'." -RunBlock {
+            New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Copy role' -Message "Create role '$($form.Name)' from parent '$($form.Parent)'?")) { return }
-            $r = New-RBACRole -Name $form.Name -Parent $form.Parent -Description $form.Description
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Copied role to '$($form.Name)'." -DryRunTitle 'New-ManagementRole (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+        if ($ok) { Load-ViewData -View 'Roles' }
     }
 
     function Do-DeleteRole {
@@ -2469,15 +2747,12 @@
         if ($sel.Origin -eq 'Built-in') {
             Set-Status "Built-in roles can't be deleted." 'warn'; return
         }
-        if ($script:DryRun) {
-            $r = Remove-RBACRole -Identity $sel.Name -DryRun
+        $r = Remove-RBACRole -Identity $sel.Name -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Remove-ManagementRole' `
+                -SuccessMsg "Deleted role '$($sel.Name)'." -RunBlock {
+            Remove-RBACRole -Identity $sel.Name
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Delete role' -Message "Delete role '$($sel.Name)'? Existing assignments referencing it will fail.")) { return }
-            $r = Remove-RBACRole -Identity $sel.Name
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Deleted role '$($sel.Name)'." -DryRunTitle 'Remove-ManagementRole (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Roles' }
+        if ($ok) { Load-ViewData -View 'Roles' }
     }
 
     # ---------------- Assignment write actions ----------------
@@ -2493,32 +2768,24 @@
         }
         if ($form.RecipientOrganizationalUnitScope) { $callArgs.RecipientOrganizationalUnitScope = $form.RecipientOrganizationalUnitScope }
         if ($form.CustomRecipientWriteScope)        { $callArgs.CustomRecipientWriteScope        = $form.CustomRecipientWriteScope }
-        if ($script:DryRun) {
-            $callArgs.DryRun = $true
-            $r = New-RBACAssignment @callArgs
+        $r = New-RBACAssignment @callArgs -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'New-ManagementRoleAssignment' `
+                -SuccessMsg "Created assignment '$($form.Name)'." -RunBlock {
+            New-RBACAssignment @callArgs
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Create assignment' -Message "Create assignment '$($form.Name)' on role '$($form.Role)' for $($form.AssigneeKind) '$($form.Assignee)'?")) { return }
-            $r = New-RBACAssignment @callArgs
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Created assignment '$($form.Name)'." -DryRunTitle 'New-ManagementRoleAssignment (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Assignments' }
+        if ($ok) { Load-ViewData -View 'Assignments' }
     }
 
     function Do-DeleteAssignment {
         if (-not (Require-Connected)) { return }
         $sel = $UI.MainGrid.SelectedItem
         if (-not $sel) { Set-Status 'Select an assignment to delete.' 'warn'; return }
-        if ($script:DryRun) {
-            $r = Remove-RBACAssignment -Identity $sel.Name -DryRun
+        $r = Remove-RBACAssignment -Identity $sel.Name -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Remove-ManagementRoleAssignment' `
+                -SuccessMsg "Deleted assignment '$($sel.Name)'." -RunBlock {
+            Remove-RBACAssignment -Identity $sel.Name
         }
-        else {
-            $msg = "Delete assignment '$($sel.Name)' (role $($sel.Role) -> $($sel.RoleAssignee))? This cannot be undone."
-            if (-not (Confirm-WriteAction -Title 'Delete assignment' -Message $msg)) { return }
-            $r = Remove-RBACAssignment -Identity $sel.Name
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Deleted assignment '$($sel.Name)'." -DryRunTitle 'Remove-ManagementRoleAssignment (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Assignments' }
+        if ($ok) { Load-ViewData -View 'Assignments' }
     }
 
     # ---------------- Scope write actions ----------------
@@ -2532,16 +2799,12 @@
         $callArgs = @{ Name = $form.Name }
         if ($form.Root)   { $callArgs.RecipientRoot              = $form.Root }
         if ($form.Filter) { $callArgs.RecipientRestrictionFilter = $form.Filter }
-        if ($script:DryRun) {
-            $callArgs.DryRun = $true
-            $r = New-RBACScope @callArgs
+        $r = New-RBACScope @callArgs -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'New-ManagementScope' `
+                -SuccessMsg "Created scope '$($form.Name)'." -RunBlock {
+            New-RBACScope @callArgs
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Create scope' -Message "Create management scope '$($form.Name)'?")) { return }
-            $r = New-RBACScope @callArgs
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Created scope '$($form.Name)'." -DryRunTitle 'New-ManagementScope (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Scopes' }
+        if ($ok) { Load-ViewData -View 'Scopes' }
     }
 
     function Do-EditScope {
@@ -2567,16 +2830,12 @@
         if ($callArgs.Count -le 1) {
             Set-Status 'Nothing to update.' 'info'; return
         }
-        if ($script:DryRun) {
-            $callArgs.DryRun = $true
-            $r = Set-RBACScope @callArgs
+        $r = Set-RBACScope @callArgs -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Set-ManagementScope' `
+                -SuccessMsg "Updated scope '$($sel.Name)'." -RunBlock {
+            Set-RBACScope @callArgs
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Update scope' -Message "Update scope '$($sel.Name)'?")) { return }
-            $r = Set-RBACScope @callArgs
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Updated scope '$($sel.Name)'." -DryRunTitle 'Set-ManagementScope (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Scopes' }
+        if ($ok) { Load-ViewData -View 'Scopes' }
     }
 
     function Do-DeleteScope {
@@ -2586,27 +2845,12 @@
         if ("$($sel.ScopeRestrictionType)" -like '*Implicit*') {
             Set-Status "Implicit scopes can't be deleted." 'warn'; return
         }
-        if ($script:DryRun) {
-            $r = Remove-RBACScope -Identity $sel.Name -DryRun
+        $r = Remove-RBACScope -Identity $sel.Name -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Remove-ManagementScope' `
+                -SuccessMsg "Deleted scope '$($sel.Name)'." -RunBlock {
+            Remove-RBACScope -Identity $sel.Name
         }
-        else {
-            if (-not (Confirm-WriteAction -Title 'Delete scope' -Message "Delete scope '$($sel.Name)'? Assignments using it will lose their scope binding.")) { return }
-            $r = Remove-RBACScope -Identity $sel.Name
-        }
-        Handle-WriteResult -Result $r -SuccessMsg "Deleted scope '$($sel.Name)'." -DryRunTitle 'Remove-ManagementScope (dry-run)'
-        if (-not $script:DryRun -and $r -and -not $r.Error) { Load-ViewData -View 'Scopes' }
-    }
-
-    function Show-RoleCmdlets {
-        $sel = $UI.MainGrid.SelectedItem
-        if (-not $sel) { Set-Status 'Select a role first.' 'warn'; return }
-        try {
-            $entries = Get-ManagementRoleEntry -Identity "$($sel.Name)\*" -ErrorAction Stop
-            $names = foreach ($entry in $entries) { $entry.Name }
-            $msg = ($names | Sort-Object) -join "`n"
-            $null = [System.Windows.MessageBox]::Show($msg, "Cmdlets in role: $($sel.Name)", 'OK', 'Information')
-        }
-        catch { Set-Status "Could not list cmdlets: $($_.Exception.Message)" 'error' }
+        if ($ok) { Load-ViewData -View 'Scopes' }
     }
 
     function Visualize-Selected {
@@ -2796,11 +3040,9 @@
     $UI.BtnConnect.Add_Click({ Do-Connect })
     $UI.BtnDisconnect.Add_Click({ Do-Disconnect })
     $UI.BtnRefresh.Add_Click({ if ($script:CurrentView) { Load-ViewData -View $script:CurrentView } })
-    $UI.BtnDryRun.Add_Click({ Toggle-DryRun })
     $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
     $UI.BtnWrap.Add_Click({ Toggle-Wrap })
     $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
-    $UI.BtnDryRun.Add_Click({ Toggle-DryRun })
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
     $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
@@ -2982,7 +3224,6 @@
 
     # ---------------- Initial state ----------------
     Update-ConnectionUI
-    Update-ModeBadge
     Set-Status 'Ready. Connect to Exchange Online to load data.'
     Switch-View -View 'RoleGroups'
 

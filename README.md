@@ -48,11 +48,11 @@ A **READ-ONLY** badge is visible in every section header to make the current sco
 ## Installation
 
 ```powershell
-git clone https://github.com/bastienperez/Pv-Exchange-RBAC-Manager.git
-Import-Module .\Pv-Exchange-RBAC-Manager\RBACExchangeManager.psd1
+git clone https://github.com/bastienperez/exchange-rbac-manager.git
+Import-Module .\exchange-rbac-manager\RBACExchangeManager.psd1
 
 # or, install permanently for the current user:
-Copy-Item -Path .\Pv-Exchange-RBAC-Manager `
+Copy-Item -Path .\exchange-rbac-manager `
           -Destination "$($env:PSModulePath.Split(';')[0])\RBACExchangeManager" `
           -Recurse -Force
 ```

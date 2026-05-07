@@ -1,6 +1,6 @@
 @{
     RootModule = 'RBACExchangeManager.psm1'
-    ModuleVersion = '0.1.2'
+    ModuleVersion = '0.2.0'
     GUID = 'cca45433-245f-4efa-93d2-a161e5d6c7be'
     Author = 'Bastien Perez'
     CompanyName = 'N/A'
