@@ -17,18 +17,31 @@ function Invoke-ExchangeRBACManager {
     [CmdletBinding()]
     param()
 
-    if (-not (Get-Module -ListAvailable -Name 'ExchangeOnlineManagement')) {
-        Write-Warning "The 'ExchangeOnlineManagement' module is not installed. Installing..."
-        try {
-            Install-Module -Name 'ExchangeOnlineManagement' -Force -Scope CurrentUser
+    $modVer = Get-RBACModuleVersion
+    $verStr = if ($modVer) { "v$($modVer.ToString())" } else { '' }
+
+    $splash = Show-RBACSplash -InitialMessage 'Initializing…' -Version $verStr
+    try {
+        # ExchangeOnlineManagement is declared in RequiredModules (RBACExchangeManager.psd1)
+        # so PowerShell auto-imports it when this module loads. We only need a lazy fallback
+        # if the command surface is missing — Get-Module -ListAvailable is slow (scans every
+        # PSModulePath) and Import-Module -Force triggers a needless reload, so skip them.
+        if (-not (Get-Command -Name Connect-ExchangeOnline -ErrorAction SilentlyContinue)) {
+            $splash.Update('Loading ExchangeOnlineManagement…')
+            try {
+                Import-Module -Name 'ExchangeOnlineManagement' -ErrorAction Stop
+            }
+            catch {
+                $splash.Close()
+                Write-Error "ExchangeOnlineManagement module is not available. Install it with: Install-Module -Name ExchangeOnlineManagement -Scope CurrentUser"
+                return
+            }
         }
-        catch {
-            Write-Error "Unable to install ExchangeOnlineManagement module: $_"
-            return
-        }
+
+        $splash.Update('Building interface…')
+        Invoke-ExchangeGUI -Splash $splash
     }
-
-    Import-Module -Name 'ExchangeOnlineManagement' -Force
-
-    Invoke-ExchangeGUI
+    finally {
+        if ($splash) { $splash.Close() }
+    }
 }

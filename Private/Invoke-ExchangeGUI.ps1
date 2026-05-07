@@ -11,7 +11,10 @@
         Create / edit / delete actions are planned for the next version.
     #>
     [CmdletBinding()]
-    param()
+    param(
+        [Parameter()]
+        [object]$Splash
+    )
 
     Add-Type -AssemblyName PresentationFramework
     Add-Type -AssemblyName PresentationCore
@@ -175,15 +178,18 @@
           <Border.Background><SolidColorBrush Color="White" Opacity="0.12"/></Border.Background>
           <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.4"/></Border.BorderBrush>
           <StackPanel>
-            <TextBlock Text="TENANT" Foreground="White" FontFamily="Consolas" FontSize="10" Opacity="0.85"/>
-            <TextBlock x:Name="TenantName" Text="Not connected" Foreground="White" FontSize="13"
+            <TextBlock x:Name="TenantLabel" Text="TENANT" Foreground="White" FontFamily="Consolas" FontSize="10" Opacity="0.85"/>
+            <TextBlock x:Name="TenantName" Text="" Foreground="White" FontSize="13"
                        Margin="0,2,0,4" TextTrimming="CharacterEllipsis"/>
             <StackPanel Orientation="Horizontal">
               <Ellipse x:Name="ConnPulse" Width="8" Height="8" Fill="#E6C4C4" VerticalAlignment="Center"/>
               <TextBlock x:Name="ConnStatus" Text="disconnected" Foreground="White"
                          FontFamily="Consolas" FontSize="11" Margin="6,0,0,0"/>
             </StackPanel>
-            <Button x:Name="BtnConnect" Content="Connect to Exchange Online" Margin="0,10,0,0" Height="30"
+            <CheckBox x:Name="ChkUseWAM" Content="Use WAM (broker)" Foreground="White" Margin="0,8,0,0"
+                      IsChecked="True"
+                      ToolTip="Web Account Manager is the default broker in ExchangeOnlineManagement 3.7.0+. Uncheck to pass -DisableWAM."/>
+            <Button x:Name="BtnConnect" Content="Connect to Exchange Online" Margin="0,8,0,0" Height="30"
                     Background="White" Foreground="#0078D4" BorderThickness="0" FontWeight="SemiBold" Cursor="Hand"/>
             <Button x:Name="BtnDisconnect" Content="Disconnect" Margin="0,4,0,0" Height="28"
                     Background="Transparent" Foreground="White" BorderBrush="White" BorderThickness="1"
@@ -205,7 +211,7 @@
         <Border Grid.Row="3" Padding="14,10" BorderThickness="0,1,0,0">
           <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.25"/></Border.BorderBrush>
           <TextBlock x:Name="VersionLabel" Foreground="White" Opacity="0.7"
-                     FontFamily="Consolas" FontSize="11" Text="v0.1.0"/>
+                     FontFamily="Consolas" FontSize="11"/>
         </Border>
       </Grid>
     </Border>
@@ -388,48 +394,58 @@
 
     # ---------------- App icon (generated at runtime: hub-and-spoke glyph) ----------------
     try {
-        $size = 32
+        [int]$iconSize = 32
+        [double]$cx       = $iconSize / 2.0
+        [double]$cy       = $iconSize / 2.0
+        [double]$hubR     = $iconSize * 0.13
+        [double]$spokeR   = $iconSize * 0.094
+        [double]$radius   = $iconSize * 0.18
+        [double]$strokeThickness = [Math]::Max(1.0, $iconSize * 0.045)
+
         $dv = [System.Windows.Media.DrawingVisual]::new()
         $ctx = $dv.RenderOpen()
-        # Background rounded square (Microsoft blue)
-        $bg = [System.Windows.Media.RectangleGeometry]::new(
-            [System.Windows.Rect]::new(0, 0, $size, $size), 6, 6)
-        $ctx.DrawGeometry([System.Windows.Media.Brushes]::Transparent, $null, $bg)
-        $ctx.DrawRectangle(
-            [System.Windows.Media.SolidColorBrush]::new(
-                [System.Windows.Media.ColorConverter]::ConvertFromString('#0078D4')),
-            $null,
-            [System.Windows.Rect]::new(0, 0, $size, $size))
-        $cx = 16; $cy = 16
-        $hubR = 4; $spokeR = 3
-        $pen = [System.Windows.Media.Pen]::new(
-            [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Colors]::White), 1.4)
-        $spokes = @(@(6, 7), @(26, 7), @(16, 26))
+
+        $bgBrush = [System.Windows.Media.SolidColorBrush]::new(
+            [System.Windows.Media.ColorConverter]::ConvertFromString('#0078D4'))
+        $ctx.DrawRoundedRectangle($bgBrush, $null,
+            [System.Windows.Rect]::new(0, 0, $iconSize, $iconSize), $radius, $radius)
+
+        $whiteBrush = [System.Windows.Media.SolidColorBrush]::new(
+            [System.Windows.Media.Colors]::White)
+        $pen = [System.Windows.Media.Pen]::new($whiteBrush, $strokeThickness)
+
+        $spokes = @(
+            ,@([double]($iconSize * 0.19), [double]($iconSize * 0.22))
+            ,@([double]($iconSize * 0.81), [double]($iconSize * 0.22))
+            ,@([double]($iconSize * 0.50), [double]($iconSize * 0.81))
+        )
         foreach ($p in $spokes) {
-            $ctx.DrawLine($pen, [System.Windows.Point]::new($cx, $cy),
-                                 [System.Windows.Point]::new($p[0], $p[1]))
+            $ctx.DrawLine($pen,
+                [System.Windows.Point]::new($cx, $cy),
+                [System.Windows.Point]::new($p[0], $p[1]))
         }
-        $ctx.DrawEllipse(
-            [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Colors]::White),
-            $null, [System.Windows.Point]::new($cx, $cy), $hubR, $hubR)
+        $ctx.DrawEllipse($whiteBrush, $null,
+            [System.Windows.Point]::new($cx, $cy), $hubR, $hubR)
         foreach ($p in $spokes) {
-            $ctx.DrawEllipse(
-                [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.Colors]::White),
-                $null, [System.Windows.Point]::new($p[0], $p[1]), $spokeR, $spokeR)
+            $ctx.DrawEllipse($whiteBrush, $null,
+                [System.Windows.Point]::new($p[0], $p[1]), $spokeR, $spokeR)
         }
         $ctx.Close()
+
         $rtb = [System.Windows.Media.Imaging.RenderTargetBitmap]::new(
-            $size, $size, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
+            $iconSize, $iconSize, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
         $rtb.Render($dv)
         $rtb.Freeze()
-        $window.Icon = $rtb
+        # Wrapping in a BitmapFrame is required for Window.Icon to be picked up
+        # reliably by the Windows 11 taskbar.
+        $window.Icon = [System.Windows.Media.Imaging.BitmapFrame]::Create($rtb)
     }
-    catch { Write-Verbose "Icon generation skipped: $_" }
+    catch { Write-Warning "Icon generation skipped: $_" }
 
     # ---------------- UI lookup helpers ----------------
     $UI = @{}
     foreach ($n in @(
-            'TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','VersionLabel',
+            'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','VersionLabel',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
             'Crumbs','ViewTitle','ViewDesc','SearchBox','ChipsHost','BtnRefresh','BtnFilterRow','BtnWrap','BtnAutoFit','ItemCount',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder',
@@ -445,8 +461,8 @@
     $script:VizAssignment = $null      # currently visualized assignment
 
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
-    $modVer = (Get-Module -Name 'RBACExchangeManager' -ListAvailable | Select-Object -First 1).Version
-    $verStr = if ($modVer) { "v$($modVer.ToString())" } else { 'v0.1.0' }
+    $modVer = Get-RBACModuleVersion
+    $verStr = if ($modVer) { "v$($modVer.ToString())" } else { 'v?' }
     $UI.VersionLabel.Text = "RBACExchangeManager $verStr"
 
     $exoVer = (Get-Module -Name 'ExchangeOnlineManagement' -ListAvailable |
@@ -471,6 +487,8 @@
             $UI.ConnPulse.Fill  = '#9BE39B'
             $UI.BtnConnect.Visibility    = 'Collapsed'
             $UI.BtnDisconnect.Visibility = 'Visible'
+            $UI.TenantLabel.Visibility   = 'Visible'
+            $UI.TenantName.Visibility    = 'Visible'
             try {
                 $info = Get-ConnectionInformation -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($info) {
@@ -481,7 +499,9 @@
         else {
             $UI.ConnStatus.Text = 'disconnected'
             $UI.ConnPulse.Fill  = '#E6C4C4'
-            $UI.TenantName.Text = 'Not connected'
+            $UI.TenantName.Text = ''
+            $UI.TenantLabel.Visibility   = 'Collapsed'
+            $UI.TenantName.Visibility    = 'Collapsed'
             $UI.BtnConnect.Visibility    = 'Visible'
             $UI.BtnDisconnect.Visibility = 'Collapsed'
         }
@@ -1748,8 +1768,21 @@
     # ---------------- Connect / Disconnect ----------------
     function Do-Connect {
         try {
-            Set-Status 'Connecting to Exchange Online…'
-            $null = Connect-RBACExchangeOnline
+            $useWam = ($UI.ChkUseWAM.IsChecked -eq $true)
+            $brokerLabel = if ($useWam) { 'WAM enabled' } else { 'WAM disabled' }
+            Set-Status "Connecting to Exchange Online ($brokerLabel)…"
+
+            # Force the UI to repaint before Connect-ExchangeOnline takes over the thread
+            # (the auth flow blocks this dispatcher and would otherwise hide the status).
+            $window.Dispatcher.Invoke(
+                [action]{},
+                [System.Windows.Threading.DispatcherPriority]::Render
+            )
+
+            $connectArgs = @{}
+            if (-not $useWam) { $connectArgs['DisableWAM'] = $true }
+            Write-Host "[RBAC] Connect-RBACExchangeOnline args: $(($connectArgs.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value)" }) -join ' ')" -ForegroundColor Cyan
+            $null = Connect-RBACExchangeOnline @connectArgs
             Update-ConnectionUI
             Set-Status 'Connected.' 'ok'
             if ($script:CurrentView) { Load-ViewData -View $script:CurrentView }
@@ -1856,6 +1889,15 @@
     Update-ConnectionUI
     Set-Status 'Ready. Connect to Exchange Online to load data.'
     Switch-View -View 'RoleGroups'
+
+    # Dismiss the splash once the main window is fully rendered so the user
+    # never sees a gap between splash close and main window paint.
+    if ($Splash) {
+        $splashRef = $Splash
+        $window.Add_ContentRendered({
+            try { $splashRef.Close() } catch { }
+        }.GetNewClosure())
+    }
 
     $null = $window.ShowDialog()
     return
