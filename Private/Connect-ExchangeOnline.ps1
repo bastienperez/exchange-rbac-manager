@@ -20,11 +20,11 @@ function Connect-RBACExchangeOnline {
         # straight through; on EOM < 3.7.0 the parameter doesn't exist and the user sees an
         # actionable error (WAM only matters on 3.7.0+ anyway).
         if ($DisableWAM) {
-            Write-Host '[RBAC] Calling: Connect-ExchangeOnline -ShowBanner:$false -DisableWAM' -ForegroundColor Cyan
+            Write-Verbose 'Connecting to Exchange Online with WAM disabled.'
             Connect-ExchangeOnline -ShowBanner:$false -DisableWAM -ErrorAction Stop
         }
         else {
-            Write-Host '[RBAC] Calling: Connect-ExchangeOnline -ShowBanner:$false (WAM default)' -ForegroundColor Cyan
+            Write-Verbose 'Connecting to Exchange Online (WAM default behaviour).'
             Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop
         }
         $Global:RBACExchangeConnectionType = 'Exchange Online'

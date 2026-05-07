@@ -53,22 +53,28 @@ function Show-RBACSplash {
       <DropShadowEffect BlurRadius="20" ShadowDepth="2" Opacity="0.35" Color="Black"/>
     </Border.Effect>
     <Grid>
-      <StackPanel>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+      <StackPanel Grid.Row="0">
         <TextBlock x:Name="TitleText" Foreground="White" FontFamily="Segoe UI"
                    FontSize="20" FontWeight="SemiBold"/>
         <TextBlock x:Name="SubtitleText" Foreground="#DEECF9" FontFamily="Segoe UI"
-                   FontSize="12" Margin="0,2,0,18"/>
-        <ProgressBar IsIndeterminate="True" Height="6" Foreground="White"
-                     Background="#106EBE" BorderThickness="0"/>
-        <TextBlock x:Name="StatusText" Foreground="White" FontFamily="Segoe UI"
-                   FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap"/>
+                   FontSize="12" Margin="0,2,0,0"/>
       </StackPanel>
-      <TextBlock x:Name="VersionText" Foreground="White" Opacity="0.65"
+      <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="White" FontFamily="Segoe UI"
+                 FontSize="12" Margin="0,0,0,8" TextWrapping="Wrap"/>
+      <ProgressBar Grid.Row="3" IsIndeterminate="True" Height="6" Foreground="White"
+                   Background="#106EBE" BorderThickness="0"/>
+      <TextBlock x:Name="VersionText" Grid.Row="0" Foreground="White" Opacity="0.65"
                  FontFamily="Consolas" FontSize="11"
                  HorizontalAlignment="Right" VerticalAlignment="Top"/>
-      <TextBlock Text="by Clidsys - Bastien Perez" Foreground="White" Opacity="0.65"
+      <TextBlock Grid.Row="2" Text="by Clidsys - Bastien Perez" Foreground="White" Opacity="0.65"
                  FontFamily="Segoe UI" FontSize="10"
-                 HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+                 HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,0,8"/>
     </Grid>
   </Border>
 </Window>

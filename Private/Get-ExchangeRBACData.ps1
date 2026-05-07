@@ -185,18 +185,10 @@ function Get-RBACManagementScopes {
         $scopes = Get-ManagementScope
         
         if ($scopes) {
-            # Prepare data for display with a summary field for the filter
+            # Expose the full RecipientFilter as FilterSummary for the GUI; truncation
+            # is the UI's job (wrap toggle, ellipsis with full-value tooltip).
             $displayData = $scopes | ForEach-Object {
-                $filterSummary = if ($_.RecipientFilter) { 
-                    if ($_.RecipientFilter.Length -gt 50) {
-                        "$($_.RecipientFilter.Substring(0, 47))..."
-                    }
-                    else {
-                        $_.RecipientFilter
-                    }
-                }
-                else { '' }
-                
+                $filterSummary = if ($_.RecipientFilter) { [string]$_.RecipientFilter } else { '' }
                 $_ | Add-Member -NotePropertyName 'FilterSummary' -NotePropertyValue $filterSummary -PassThru
             }
             return $displayData
