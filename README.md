@@ -1,4 +1,4 @@
-﻿# RBAC Exchange Manager
+﻿# Exchange RBAC Manager
 
 A PowerShell module providing a Windows GUI to **inspect** Role-Based Access Control (RBAC) in **Exchange Online**.
 
@@ -49,11 +49,11 @@ A **READ-ONLY** badge is visible in every section header to make the current sco
 
 ```powershell
 git clone https://github.com/bastienperez/exchange-rbac-manager.git
-Import-Module .\exchange-rbac-manager\RBACExchangeManager.psd1
+Import-Module .\exchange-rbac-manager\ExchangeRBACManager.psd1
 
 # or, install permanently for the current user:
 Copy-Item -Path .\exchange-rbac-manager `
-          -Destination "$($env:PSModulePath.Split(';')[0])\RBACExchangeManager" `
+          -Destination "$($env:PSModulePath.Split(';')[0])\ExchangeRBACManager" `
           -Recurse -Force
 ```
 

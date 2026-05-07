@@ -22,7 +22,7 @@ function Invoke-ExchangeRBACManager {
 
     $splash = Show-RBACSplash -InitialMessage 'Initializing…' -Version $verStr
     try {
-        # ExchangeOnlineManagement is declared in RequiredModules (RBACExchangeManager.psd1)
+        # ExchangeOnlineManagement is declared in RequiredModules (ExchangeRBACManager.psd1)
         # so PowerShell auto-imports it when this module loads. We only need a lazy fallback
         # if the command surface is missing — Get-Module -ListAvailable is slow (scans every
         # PSModulePath) and Import-Module -Force triggers a needless reload, so skip them.

@@ -9,12 +9,12 @@ on:
         type: string
 
 env:
-  MODULE_NAME: RBACExchangeManager
+  MODULE_NAME: ExchangeRBACManager
 
 jobs:
   publish:
     runs-on: windows-latest
-    name: Publish RBACExchangeManager Module
+    name: Publish ExchangeRBACManager Module
 
     steps:
     - name: 📥 Checkout Repository

@@ -1,9 +1,9 @@
 function Get-RBACModuleVersion {
     <#
     .SYNOPSIS
-        Returns the RBACExchangeManager module version from the .psd1 manifest.
+        Returns the ExchangeRBACManager module version from the .psd1 manifest.
     .DESCRIPTION
-        Single source of truth for the module version. Reads RBACExchangeManager.psd1
+        Single source of truth for the module version. Reads ExchangeRBACManager.psd1
         directly so the version stays correct even when the module is dot-sourced,
         renamed, or loaded twice (cases where Get-Module returns 0.0 or nothing).
     .OUTPUTS
@@ -14,7 +14,7 @@ function Get-RBACModuleVersion {
     param()
 
     # $PSScriptRoot is captured at function-definition time = the Private folder.
-    $manifestPath = Join-Path $PSScriptRoot '..\RBACExchangeManager.psd1'
+    $manifestPath = Join-Path $PSScriptRoot '..\ExchangeRBACManager.psd1'
     try {
         $manifest = Import-PowerShellDataFile -Path $manifestPath -ErrorAction Stop
         if ($manifest.ModuleVersion) {

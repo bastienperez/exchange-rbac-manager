@@ -1,6 +1,6 @@
 @{
-    RootModule = 'RBACExchangeManager.psm1'
-    ModuleVersion = '0.2.0'
+    RootModule = 'ExchangeRBACManager.psm1'
+    ModuleVersion = '0.3.0'
     GUID = 'cca45433-245f-4efa-93d2-a161e5d6c7be'
     Author = 'Bastien Perez'
     CompanyName = 'N/A'
@@ -15,7 +15,7 @@
     PrivateData = @{
         PSData = @{
             Tags = @('Exchange', 'RBAC', 'Management')
-            ProjectUri = 'https://github.com/bastienperez/RBAC-Exchange-Manager'
+            ProjectUri = 'https://github.com/bastienperez/exchange-rbac-manager'
         }
     }
 }

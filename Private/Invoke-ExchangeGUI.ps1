@@ -567,7 +567,7 @@
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
     $modVer = Get-RBACModuleVersion
     $verStr = if ($modVer) { "v$($modVer.ToString())" } else { 'v?' }
-    $UI.VersionLabel.Text = "RBACExchangeManager $verStr"
+    $UI.VersionLabel.Text = "ExchangeRBACManager $verStr"
 
     $exoVer = (Get-Module -Name 'ExchangeOnlineManagement' -ListAvailable |
                Sort-Object Version -Descending | Select-Object -First 1).Version

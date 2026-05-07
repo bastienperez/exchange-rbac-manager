@@ -1,4 +1,4 @@
-# RBAC Exchange Manager Module
+# Exchange RBAC Manager Module
 # Author: Bastien Perez
 
 $Public  = @(Get-ChildItem -Path $PSScriptRoot\Public\*.ps1  -ErrorAction SilentlyContinue)
