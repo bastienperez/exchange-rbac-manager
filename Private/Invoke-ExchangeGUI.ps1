@@ -34,7 +34,8 @@
     <SolidColorBrush x:Key="AccentDark"  Color="#106EBE"/>
     <SolidColorBrush x:Key="AccentSoft"  Color="#DEECF9"/>
     <SolidColorBrush x:Key="ContentBg"   Color="#FFFFFF"/>
-    <SolidColorBrush x:Key="ToolbarBg"   Color="#FAF9F8"/>
+    <!-- Single chrome surface used by toolbar, action bar, details panel and Visualizer host. -->
+    <SolidColorBrush x:Key="ToolbarBg"   Color="#F8F8F8"/>
     <SolidColorBrush x:Key="StatusBg"    Color="#F3F2F1"/>
     <SolidColorBrush x:Key="BorderC"     Color="#E1DFDD"/>
     <SolidColorBrush x:Key="Subdued"     Color="#605E5C"/>
@@ -51,22 +52,25 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
-            <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="18,0">
+            <!-- Thin margin on the right so the active "pill" doesn't bleed into the content area. -->
+            <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="18,0" Margin="0,1,0,1"
+                    CornerRadius="0">
               <Grid>
                 <TextBlock x:Name="lbl" Text="{TemplateBinding Content}"
                            Foreground="White" VerticalAlignment="Center"/>
-                <Border x:Name="active" HorizontalAlignment="Left" Width="3" Background="White" Opacity="0" Margin="-18,0,0,0"/>
+                <Border x:Name="active" HorizontalAlignment="Left" Width="3" Background="#0078D4" Opacity="0" Margin="-18,0,0,0"/>
               </Grid>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="#106EBE"/>
+                <Setter TargetName="bd" Property="Background" Value="#0064B0"/>
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="White"/>
+                <Setter TargetName="bd" Property="CornerRadius" Value="6,0,0,6"/>
+                <Setter TargetName="bd" Property="Margin" Value="8,1,0,1"/>
                 <Setter TargetName="lbl" Property="Foreground" Value="#0078D4"/>
                 <Setter TargetName="active" Property="Opacity" Value="1"/>
-                <Setter TargetName="active" Property="Background" Value="#0078D4"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -88,7 +92,7 @@
         <Setter.Value>
           <ControlTemplate TargetType="Button">
             <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
-                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="2" Padding="{TemplateBinding Padding}">
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
               <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
             <ControlTemplate.Triggers>
@@ -126,6 +130,40 @@
         </Trigger>
       </Style.Triggers>
     </Style>
+    <!-- Stateful toggle (Filter, Wrap…). Same template as ActionBtn but reacts to IsChecked. -->
+    <Style x:Key="ToggleActionBtn" TargetType="ToggleButton">
+      <Setter Property="Padding" Value="14,0"/>
+      <Setter Property="Margin"  Value="4,0"/>
+      <Setter Property="Height"  Value="32"/>
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="Foreground" Value="#201F1E"/>
+      <Setter Property="BorderBrush" Value="#C8C6C4"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ToggleButton">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+      <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background"  Value="#F3F2F1"/>
+          <Setter Property="BorderBrush" Value="#A19F9D"/>
+        </Trigger>
+        <Trigger Property="IsChecked" Value="True">
+          <Setter Property="Background"  Value="#DEECF9"/>
+          <Setter Property="BorderBrush" Value="#0078D4"/>
+          <Setter Property="Foreground"  Value="#0078D4"/>
+        </Trigger>
+      </Style.Triggers>
+    </Style>
+
     <Style x:Key="WarnBtn" TargetType="Button" BasedOn="{StaticResource ActionBtn}">
       <Setter Property="Foreground"  Value="#A4262C"/>
       <Setter Property="BorderBrush" Value="#F1B0B0"/>
@@ -152,7 +190,7 @@
       <Setter Property="CanUserResizeRows" Value="False"/>
       <Setter Property="CanUserSortColumns" Value="True"/>
       <Setter Property="CanUserReorderColumns" Value="False"/>
-      <Setter Property="AlternatingRowBackground" Value="#FAF9F8"/>
+      <Setter Property="AlternatingRowBackground" Value="#FCFCFC"/>
     </Style>
     <Style TargetType="DataGridColumnHeader">
       <Setter Property="Background" Value="#F8F8F8"/>
@@ -175,10 +213,16 @@
       </Style.Triggers>
     </Style>
     <Style TargetType="DataGridRow">
+      <Setter Property="BorderThickness" Value="3,0,0,0"/>
+      <Setter Property="BorderBrush" Value="Transparent"/>
       <Style.Triggers>
+        <Trigger Property="IsMouseOver" Value="True">
+          <Setter Property="Background" Value="#F5FBFF"/>
+        </Trigger>
         <Trigger Property="IsSelected" Value="True">
-          <Setter Property="Background" Value="#DEECF9"/>
-          <Setter Property="Foreground" Value="#201F1E"/>
+          <Setter Property="Background"  Value="#DEECF9"/>
+          <Setter Property="Foreground"  Value="#201F1E"/>
+          <Setter Property="BorderBrush" Value="#0078D4"/>
         </Trigger>
         <DataTrigger Binding="{Binding Enabled}" Value="False">
           <Setter Property="Foreground" Value="#A19F9D"/>
@@ -218,7 +262,10 @@
     </Grid.ColumnDefinitions>
 
     <!-- Sidebar -->
-    <Border Grid.Column="0" Background="{StaticResource Accent}">
+    <Border Grid.Column="0">
+      <Border.Background>
+        <SolidColorBrush Color="#106EBE"/>
+      </Border.Background>
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -253,15 +300,17 @@
           </StackPanel>
         </Border>
 
-        <StackPanel Grid.Row="2" Margin="6,0,6,0">
-          <ToggleButton x:Name="NavRoleGroups"  Style="{StaticResource NavButton}" Content="Role Groups"/>
-          <ToggleButton x:Name="NavRoles"       Style="{StaticResource NavButton}" Content="Roles"/>
-          <ToggleButton x:Name="NavAssignments" Style="{StaticResource NavButton}" Content="Role Assignments"/>
-          <ToggleButton x:Name="NavScopes"      Style="{StaticResource NavButton}" Content="Scopes"/>
-          <ToggleButton x:Name="NavUserRights"  Style="{StaticResource NavButton}" Content="User Rights"/>
-          <ToggleButton x:Name="NavCommands"    Style="{StaticResource NavButton}" Content="Command Lookup"/>
-          <ToggleButton x:Name="NavVisualizer"  Style="{StaticResource NavButton}" Content="RBAC Visualizer"/>
-          <ToggleButton x:Name="NavAudit"       Style="{StaticResource NavButton}" Content="Audit Log"/>
+        <StackPanel Grid.Row="2" Margin="0,0,0,0">
+          <ToggleButton x:Name="NavRoleGroups"  Style="{StaticResource NavButton}" Content="◈   Role Groups"/>
+          <ToggleButton x:Name="NavRoles"       Style="{StaticResource NavButton}" Content="▤   Roles"/>
+          <ToggleButton x:Name="NavAssignments" Style="{StaticResource NavButton}" Content="⇄   Role Assignments"/>
+          <ToggleButton x:Name="NavScopes"      Style="{StaticResource NavButton}" Content="⊙   Scopes"/>
+          <Border Height="1" Opacity="0.2" Background="White" Margin="14,8,14,8"/>
+          <ToggleButton x:Name="NavUserRights"  Style="{StaticResource NavButton}" Content="⌕   User Rights"/>
+          <ToggleButton x:Name="NavCommands"    Style="{StaticResource NavButton}" Content="⌘   Command Lookup"/>
+          <Border Height="1" Opacity="0.2" Background="White" Margin="14,8,14,8"/>
+          <ToggleButton x:Name="NavVisualizer"  Style="{StaticResource NavButton}" Content="⤳   RBAC Visualizer"/>
+          <ToggleButton x:Name="NavAudit"       Style="{StaticResource NavButton}" Content="◷   Audit Log"/>
         </StackPanel>
 
         <Border Grid.Row="3" Padding="14,10" BorderThickness="0,1,0,0">
@@ -282,8 +331,8 @@
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
 
-      <!-- Content head -->
-      <Border Grid.Row="0" Padding="24,16,24,12" BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
+      <!-- Content head — no bottom border, the toolbar's own divider handles separation. -->
+      <Border Grid.Row="0" Padding="24,18,24,16">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
@@ -298,7 +347,7 @@
       </Border>
 
       <!-- Toolbar -->
-      <Border Grid.Row="1" Background="{StaticResource ToolbarBg}" Padding="24,10"
+      <Border Grid.Row="1" Background="{StaticResource ToolbarBg}" Padding="24,12"
               BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
         <Grid>
           <Grid.ColumnDefinitions>
@@ -307,8 +356,18 @@
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <Border x:Name="SearchHost" Grid.Column="0" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2"
+          <Border x:Name="SearchHost" Grid.Column="0" BorderThickness="1" CornerRadius="4"
                   Background="White" Width="280" Height="30">
+            <Border.Style>
+              <Style TargetType="Border">
+                <Setter Property="BorderBrush" Value="#C8C6C4"/>
+                <Style.Triggers>
+                  <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                    <Setter Property="BorderBrush" Value="#0078D4"/>
+                  </Trigger>
+                </Style.Triggers>
+              </Style>
+            </Border.Style>
             <Grid>
               <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -337,16 +396,20 @@
             </ItemsControl.ItemsPanel>
           </ItemsControl>
           <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
-            <Button x:Name="BtnFilterRow" Content="Filter: off" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
-                    ToolTip="Toggle a filter input in each column header"/>
-            <Button x:Name="BtnWrap" Content="Wrap: on" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
-                    ToolTip="Toggle text wrapping on long cells"/>
+            <ToggleButton x:Name="BtnFilterRow" Content="Filter" Style="{StaticResource ToggleActionBtn}" Margin="0,0,6,0"
+                          ToolTip="Toggle a filter input in each column header"/>
+            <ToggleButton x:Name="BtnWrap" Content="Wrap" Style="{StaticResource ToggleActionBtn}" Margin="0,0,6,0"
+                          ToolTip="Toggle text wrapping on long cells"/>
             <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
                     ToolTip="Resize columns to fit current content"/>
-            <Button x:Name="BtnRefresh" Content="Refresh" Style="{StaticResource ActionBtn}"/>
+            <Border Width="1" Background="#E1DFDD" Margin="6,4"/>
+            <Button x:Name="BtnRefresh" Content="⟳  Refresh" Style="{StaticResource ActionBtn}"
+                    ToolTip="Reload data for the current view"/>
           </StackPanel>
-          <TextBlock x:Name="ItemCount" Grid.Column="3" FontFamily="Consolas" FontSize="11"
-                     Foreground="{StaticResource Subdued}" VerticalAlignment="Center" Text="0 items"/>
+          <Border Grid.Column="3" CornerRadius="10" Padding="10,3" Background="#EFEDEB" VerticalAlignment="Center">
+            <TextBlock x:Name="ItemCount" FontFamily="Consolas" FontSize="11"
+                       Foreground="{StaticResource Subdued}" Text="0 items"/>
+          </Border>
         </Grid>
       </Border>
 
@@ -359,19 +422,23 @@
         <Grid Grid.Column="0">
           <DataGrid x:Name="MainGrid"/>
         <Grid>
-          <Grid x:Name="VizHost" Visibility="Collapsed" Background="#FAFAFA">
+          <Grid x:Name="VizHost" Visibility="Collapsed" Background="White">
             <ScrollViewer x:Name="VizScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
-              <Canvas x:Name="VizCanvas" Background="#FAFAFA" ClipToBounds="True"/>
+              <Canvas x:Name="VizCanvas" Background="White" ClipToBounds="True"/>
             </ScrollViewer>
-            <TextBlock x:Name="VizPlaceholder" Text="Pick an assignment in the toolbar to visualize."
-                       Foreground="#605E5C" HorizontalAlignment="Center" VerticalAlignment="Center" FontSize="14"/>
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Background="#F3F2F1" CornerRadius="6" Padding="14,10">
+              <TextBlock x:Name="VizPlaceholder" Text="Pick an assignment in the toolbar to visualize."
+                         Foreground="#605E5C" FontSize="13"/>
+            </Border>
           </Grid>
         </Grid>
         </Grid>
-        <Border x:Name="DetailsPanel" Grid.Column="1" Background="#FAF9F8"
+        <Border x:Name="DetailsPanel" Grid.Column="1" Background="{StaticResource ToolbarBg}"
                 BorderBrush="{StaticResource BorderC}" BorderThickness="1,0,0,0" Visibility="Collapsed">
           <Grid>
             <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
@@ -381,14 +448,34 @@
                 <ColumnDefinition Width="Auto"/>
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0">
-                <TextBlock Text="DETAILS" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource Subdued}"/>
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="DETAILS" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource Subdued}"
+                             VerticalAlignment="Center"/>
+                  <Border x:Name="DetailsTypeBadge" Margin="8,0,0,0" Padding="6,1" CornerRadius="6"
+                          Background="#DEECF9" Visibility="Collapsed">
+                    <TextBlock x:Name="DetailsTypeBadgeText" FontFamily="Consolas" FontSize="10"
+                               FontWeight="SemiBold" Foreground="#0078D4"/>
+                  </Border>
+                </StackPanel>
                 <TextBlock x:Name="DetailsTitle" FontSize="16" FontWeight="SemiBold"
                            Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
               </StackPanel>
               <Button x:Name="BtnDetailsClose" Grid.Column="1" Content="✕" Width="28" Height="28"
-                      Background="Transparent" BorderThickness="0" Foreground="#605E5C" Cursor="Hand" FontSize="14"/>
+                      Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="14">
+                <Button.Style>
+                  <Style TargetType="Button">
+                    <Setter Property="Foreground" Value="#605E5C"/>
+                    <Style.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter Property="Foreground" Value="#0078D4"/>
+                      </Trigger>
+                    </Style.Triggers>
+                  </Style>
+                </Button.Style>
+              </Button>
             </Grid>
-            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,0,16,16">
+            <Border Grid.Row="1" Height="1" Background="#E1DFDD" Margin="16,0,16,8"/>
+            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="16,0,16,16">
               <ItemsControl x:Name="DetailsList">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
@@ -443,21 +530,26 @@
       </Grid>
 
       <!-- Action bar -->
-      <Border Grid.Row="3" Background="{StaticResource ToolbarBg}" Padding="24,10"
+      <Border Grid.Row="3" Background="{StaticResource ToolbarBg}" Padding="24,12"
               BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,0">
         <Grid>
           <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>  <!-- selection chip -->
+            <ColumnDefinition Width="*"/>     <!-- spacer -->
+            <ColumnDefinition Width="Auto"/>  <!-- left cluster (New, Edit, Copy, Visualize, Lookup) -->
+            <ColumnDefinition Width="Auto"/>  <!-- separator + destructive -->
+            <ColumnDefinition Width="Auto"/>  <!-- export -->
           </Grid.ColumnDefinitions>
-          <TextBlock x:Name="SelectionCount" Grid.Column="0" Text="0 selected"
-                     FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Subdued}"
-                     VerticalAlignment="Center"/>
-          <ItemsControl x:Name="ActionsHost" Grid.Column="1">
-            <ItemsControl.ItemsPanel>
-              <ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-          </ItemsControl>
+          <Border Grid.Column="0" CornerRadius="10" Padding="10,3" Background="#EFEDEB" VerticalAlignment="Center">
+            <TextBlock x:Name="SelectionCount" Text="0 selected"
+                       FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Subdued}"/>
+          </Border>
+          <StackPanel x:Name="ActionsLeft"  Grid.Column="2" Orientation="Horizontal"/>
+          <StackPanel Grid.Column="3" Orientation="Horizontal">
+            <Border x:Name="ActionsMidSep" Width="1" Background="#E1DFDD" Margin="6,4" Visibility="Collapsed"/>
+            <StackPanel x:Name="ActionsMid" Orientation="Horizontal"/>
+          </StackPanel>
+          <StackPanel x:Name="ActionsRight" Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0"/>
         </Grid>
       </Border>
 
@@ -469,14 +561,14 @@
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="12,0">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="16,0">
             <TextBlock x:Name="StatusDot" Foreground="#107C10" Text="●" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusText" Margin="6,0,0,0" Text="Ready" VerticalAlignment="Center"
                        FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
             <TextBlock x:Name="StatusSep" Margin="12,0" Text="|" Foreground="#A19F9D" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusItems" VerticalAlignment="Center" FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
           </StackPanel>
-          <TextBlock x:Name="StatusVersion" Grid.Column="1" Margin="0,0,12,0" VerticalAlignment="Center"
+          <TextBlock x:Name="StatusVersion" Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center"
                      FontFamily="Consolas" FontSize="11" Foreground="#A19F9D"/>
         </Grid>
       </Border>
@@ -547,8 +639,8 @@
             'BtnRefresh','BtnFilterRow','BtnWrap','BtnAutoFit',
             'ItemCount',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder',
-            'DetailsCol','DetailsPanel','DetailsTitle','DetailsList','BtnDetailsClose',
-            'SelectionCount','ActionsHost',
+            'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose',
+            'SelectionCount','ActionsLeft','ActionsMid','ActionsRight','ActionsMidSep',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
         )) { $UI[$n] = $window.FindName($n) }
 
@@ -620,19 +712,63 @@
     # ---------------- Chip / Action factories ----------------
     function New-Chip {
         param([string]$Label, [switch]$On)
+        # Fluent-style filter chip: rounded pill, Segoe UI, hover state for inactive,
+        # filled accent + bold when selected.
         $b = [System.Windows.Controls.Border]::new()
-        $b.CornerRadius = '11'; $b.BorderThickness = '1'; $b.Margin = '0,2,6,2'; $b.Padding = '10,4'; $b.Height = 22
+        $b.CornerRadius      = '13'
+        $b.BorderThickness   = '1'
+        $b.Margin            = '0,2,6,2'
+        $b.Padding           = '14,5'
+        $b.Height            = 26
         $b.VerticalAlignment = 'Center'
-        $b.Cursor = [System.Windows.Input.Cursors]::Hand
-        if ($On) { $b.Background = '#0078D4'; $b.BorderBrush = '#0078D4' }
-        else     { $b.Background = 'White';   $b.BorderBrush = '#C8C6C4' }
+        $b.Cursor            = [System.Windows.Input.Cursors]::Hand
+        $b.SnapsToDevicePixels = $true
+
         $t = [System.Windows.Controls.TextBlock]::new()
-        $t.Text = $Label; $t.FontFamily = 'Consolas'; $t.FontSize = 11
-        $t.Foreground = $(if ($On) { 'White' } else { '#323130' })
+        # Tidy label: "all" → "All", "view-only" → "View-Only".
+        $tidy = ($Label -split '[\s_-]+' | ForEach-Object {
+            if ($_) { $_.Substring(0,1).ToUpper() + $_.Substring(1) }
+        }) -join ' '
+        $t.Text              = $tidy
+        $t.FontFamily        = 'Segoe UI'
+        $t.FontSize          = 12
         $t.VerticalAlignment = 'Center'
-        $t.IsHitTestVisible = $false   # so the chip border owns the hit
+        $t.IsHitTestVisible  = $false   # so the chip border owns the hit
         $b.Child = $t
-        # Stash the chip label on Tag for the click handler.
+
+        if ($On) {
+            $b.Background  = '#0078D4'
+            $b.BorderBrush = '#0078D4'
+            $t.Foreground  = 'White'
+            $t.FontWeight  = [System.Windows.FontWeights]::SemiBold
+            # Subtle drop shadow on the active pill so it sits above the toolbar surface.
+            $shadow = [System.Windows.Media.Effects.DropShadowEffect]::new()
+            $shadow.BlurRadius   = 4
+            $shadow.ShadowDepth  = 1
+            $shadow.Opacity      = 0.18
+            $shadow.Color        = [System.Windows.Media.Colors]::Black
+            $b.Effect = $shadow
+        }
+        else {
+            $b.Background  = 'White'
+            $b.BorderBrush = '#C8C6C4'
+            $t.Foreground  = '#323130'
+            # Hover effect for inactive chips: darken background, accent border.
+            $b.Add_MouseEnter({
+                $args[0].Background  = [System.Windows.Media.SolidColorBrush]::new(
+                    [System.Windows.Media.ColorConverter]::ConvertFromString('#EFF6FC'))
+                $args[0].BorderBrush = [System.Windows.Media.SolidColorBrush]::new(
+                    [System.Windows.Media.ColorConverter]::ConvertFromString('#0078D4'))
+            })
+            $b.Add_MouseLeave({
+                $args[0].Background  = [System.Windows.Media.SolidColorBrush]::new(
+                    [System.Windows.Media.Colors]::White)
+                $args[0].BorderBrush = [System.Windows.Media.SolidColorBrush]::new(
+                    [System.Windows.Media.ColorConverter]::ConvertFromString('#C8C6C4'))
+            })
+        }
+
+        # Stash the original (untidied) label on Tag so Switch-Chip resolves correctly.
         $b.Tag = $Label
         $b.Add_MouseLeftButtonDown({
             $label = $args[0].Tag
@@ -666,26 +802,44 @@
     }
 
     function New-ActionButton {
-        param([string]$Label, [string]$Style = 'ActionBtn', [scriptblock]$OnClick)
+        param(
+            [string]$Label,
+            [string]$Style = 'ActionBtn',
+            [scriptblock]$OnClick,
+            [ValidateSet('Left','Mid','Right')]
+            [string]$Slot = 'Left'
+        )
         $b = [System.Windows.Controls.Button]::new()
         $b.Content = $Label
         $b.Style = $window.FindResource($Style)
         if ($OnClick) {
-            # Stash the scriptblock on the button; the click handler reads it from the sender.
-            # Read sender via $args[0] (param-binding through delegate is unreliable in PS 5.1).
             $b.Tag = $OnClick
             $b.Add_Click({
                 $sb = $args[0].Tag
                 if ($sb -is [scriptblock]) { & $sb }
             })
         }
-        return $b
+        # Wrap so the dispatcher knows which zone to put the button in.
+        return [pscustomobject]@{ Button = $b; Slot = $Slot }
     }
 
     function Set-Actions {
         param([array]$Buttons)
-        $UI.ActionsHost.Items.Clear()
-        foreach ($b in $Buttons) { $null = $UI.ActionsHost.Items.Add($b) }
+        $UI.ActionsLeft.Children.Clear()
+        $UI.ActionsMid.Children.Clear()
+        $UI.ActionsRight.Children.Clear()
+        $UI.ActionsMidSep.Visibility = 'Collapsed'
+
+        foreach ($entry in $Buttons) {
+            switch ($entry.Slot) {
+                'Right' { $null = $UI.ActionsRight.Children.Add($entry.Button) }
+                'Mid'   {
+                    $null = $UI.ActionsMid.Children.Add($entry.Button)
+                    $UI.ActionsMidSep.Visibility = 'Visible'
+                }
+                default { $null = $UI.ActionsLeft.Children.Add($entry.Button) }
+            }
+        }
     }
 
     # ---------------- Write-mode helpers ----------------
@@ -1463,6 +1617,9 @@
     $script:ColumnFilters       = @{}
     $script:FilterRowEnabled    = $false
     $script:WrapEnabled         = $true
+    # Sync the toggle visuals with the default state.
+    if ($UI.BtnFilterRow) { $UI.BtnFilterRow.IsChecked = $script:FilterRowEnabled }
+    if ($UI.BtnWrap)      { $UI.BtnWrap.IsChecked      = $script:WrapEnabled }
     $script:FilterDebounceTimer = [System.Windows.Threading.DispatcherTimer]::new()
     $script:FilterDebounceTimer.Interval = [TimeSpan]::FromMilliseconds(250)
     $script:FilterDebounceTimer.Add_Tick({
@@ -1500,20 +1657,67 @@
             $col.CanUserSort     = $true
             $col.SortMemberPath  = $c.Path
 
-            # ---- Header: label + optional filter TextBox ----
+            # ---- Header: label + sort arrow + optional filter TextBox ----
             $headerPanel = [System.Windows.Controls.StackPanel]::new()
             $headerPanel.Orientation = [System.Windows.Controls.Orientation]::Vertical
+
+            # Inline row: label on the left, sort arrow on the right.
+            $titleRow = [System.Windows.Controls.StackPanel]::new()
+            $titleRow.Orientation = [System.Windows.Controls.Orientation]::Horizontal
             $headerLabel = [System.Windows.Controls.TextBlock]::new()
             $headerLabel.Text       = ([string]$c.Header).ToUpperInvariant()
             $headerLabel.FontWeight = [System.Windows.FontWeights]::SemiBold
             $headerLabel.FontSize   = 11
             $headerLabel.Foreground = (New-Brush '#323130')
+            $headerLabel.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+            $null = $titleRow.Children.Add($headerLabel)
+
+            # Sort arrow — visibility/glyph driven by the parent DataGridColumnHeader's
+            # SortDirection via DataTriggers (no direct event wiring needed).
+            $sortArrow = [System.Windows.Controls.TextBlock]::new()
+            $sortArrow.FontSize    = 9
+            $sortArrow.Margin      = '4,0,0,0'
+            $sortArrow.Foreground  = (New-Brush '#0078D4')
+            $sortArrow.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
+            $sortStyle = [System.Windows.Style]::new([System.Windows.Controls.TextBlock])
+            $sortStyle.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.UIElement]::VisibilityProperty,
+                [System.Windows.Visibility]::Collapsed))
+            # Ascending → ▲
+            $dtAsc = [System.Windows.DataTrigger]::new()
+            $dtAsc.Binding = [System.Windows.Data.Binding]::new('Column.SortDirection')
+            $dtAsc.Binding.RelativeSource = [System.Windows.Data.RelativeSource]::new(
+                [System.Windows.Data.RelativeSourceMode]::FindAncestor,
+                [System.Windows.Controls.Primitives.DataGridColumnHeader], 1)
+            $dtAsc.Value = [System.ComponentModel.ListSortDirection]::Ascending
+            $dtAsc.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.Controls.TextBlock]::TextProperty, [string]'▲'))
+            $dtAsc.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.UIElement]::VisibilityProperty,
+                [System.Windows.Visibility]::Visible))
+            $sortStyle.Triggers.Add($dtAsc)
+            # Descending → ▼
+            $dtDesc = [System.Windows.DataTrigger]::new()
+            $dtDesc.Binding = [System.Windows.Data.Binding]::new('Column.SortDirection')
+            $dtDesc.Binding.RelativeSource = [System.Windows.Data.RelativeSource]::new(
+                [System.Windows.Data.RelativeSourceMode]::FindAncestor,
+                [System.Windows.Controls.Primitives.DataGridColumnHeader], 1)
+            $dtDesc.Value = [System.ComponentModel.ListSortDirection]::Descending
+            $dtDesc.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.Controls.TextBlock]::TextProperty, [string]'▼'))
+            $dtDesc.Setters.Add([System.Windows.Setter]::new(
+                [System.Windows.UIElement]::VisibilityProperty,
+                [System.Windows.Visibility]::Visible))
+            $sortStyle.Triggers.Add($dtDesc)
+            $sortArrow.Style = $sortStyle
+            $null = $titleRow.Children.Add($sortArrow)
+
             # Mirror the cell alignment in the header so numeric columns line up.
             if ($c.Align -eq 'Right') {
-                $headerLabel.TextAlignment = [System.Windows.TextAlignment]::Right
+                $titleRow.HorizontalAlignment    = [System.Windows.HorizontalAlignment]::Right
                 $headerPanel.HorizontalAlignment = [System.Windows.HorizontalAlignment]::Right
             }
-            $null = $headerPanel.Children.Add($headerLabel)
+            $null = $headerPanel.Children.Add($titleRow)
             if ($script:FilterRowEnabled) {
                 $fbox = [System.Windows.Controls.TextBox]::new()
                 $fbox.Margin     = '0,4,0,0'
@@ -1672,8 +1876,8 @@
     }
 
     function Toggle-FilterRow {
-        $script:FilterRowEnabled = -not $script:FilterRowEnabled
-        $UI.BtnFilterRow.Content = if ($script:FilterRowEnabled) { 'Filter: on' } else { 'Filter: off' }
+        # IsChecked is the source of truth (set by the ToggleButton itself when clicked).
+        $script:FilterRowEnabled = [bool]$UI.BtnFilterRow.IsChecked
         if (-not $script:FilterRowEnabled) {
             $script:ColumnFilters.Clear()
         }
@@ -1685,8 +1889,7 @@
     }
 
     function Toggle-Wrap {
-        $script:WrapEnabled = -not $script:WrapEnabled
-        $UI.BtnWrap.Content = if ($script:WrapEnabled) { 'Wrap: on' } else { 'Wrap: off' }
+        $script:WrapEnabled = [bool]$UI.BtnWrap.IsChecked
         $cfg = $script:Views[$script:CurrentView]
         if ($cfg -and $cfg.Columns -and $cfg.Columns.Count -gt 0) {
             Set-GridColumns -Columns $cfg.Columns
@@ -1703,6 +1906,25 @@
         if (-not $title) { $title = $Item.RoleName }
         if (-not $title) { $title = '(item)' }
         $UI.DetailsTitle.Text = "$title"
+
+        # Item-type chip in the header — derived from the current view name.
+        $badgeMap = @{
+            RoleGroups  = 'ROLE GROUP'
+            Roles       = 'ROLE'
+            Assignments = 'ASSIGNMENT'
+            Scopes      = 'SCOPE'
+            UserRights  = 'USER RIGHT'
+            Commands    = 'ROLE'
+            Audit       = 'AUDIT EVENT'
+        }
+        $badgeText = $badgeMap[$script:CurrentView]
+        if ($badgeText) {
+            $UI.DetailsTypeBadgeText.Text = $badgeText
+            $UI.DetailsTypeBadge.Visibility = 'Visible'
+        }
+        else {
+            $UI.DetailsTypeBadge.Visibility = 'Collapsed'
+        }
 
         $rows = New-Object System.Collections.ObjectModel.ObservableCollection[Object]
         foreach ($p in $Item.PSObject.Properties) {
@@ -1833,7 +2055,7 @@
         $baseRadius     = 130
         $ringSpacing    = 70
         $itemsPerRing   = 14
-        $cmdletPositions = @()
+        $cmdletPositions = [System.Collections.Generic.List[hashtable]]::new()
         $bounds = @{ minX = $roleNcX; maxX = $roleNcX; minY = $roleNcY; maxY = $roleNcY }
 
         for ($i = 0; $i -lt $allEntries.Count; $i++) {
@@ -1847,14 +2069,14 @@
             $x   = $ncX - $cmdletNodeW / 2
             $y   = $ncY - $cmdletNodeH / 2
 
-            $cmdletPositions += @{
+            $null = $cmdletPositions.Add(@{
                 X     = $x
                 Y     = $y
                 NcX   = $ncX
                 NcY   = $ncY
                 Angle = $angle
                 Ring  = $ring
-            }
+            })
 
             # Track bounds
             $bounds.minX = [Math]::Min($bounds.minX, $x)
@@ -1973,7 +2195,7 @@
         }
 
         # -- Edges: hub → spokes (stored so node drag can update them) ----
-        $spokeLines = @()
+        $spokeLines = [System.Collections.Generic.List[System.Windows.Shapes.Line]]::new()
         foreach ($s in $spokes) {
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY
@@ -1981,7 +2203,7 @@
             $line.Stroke = '#605E5C'
             $line.StrokeThickness = 1.5
             $null = $cv.Children.Add($line)
-            $spokeLines += $line
+            $null = $spokeLines.Add($line)
         }
 
         # -- Edges: role node → cmdlet nodes (stored too) -----------------
@@ -1989,8 +2211,8 @@
         $null = $dashes.Add(4.0)
         $null = $dashes.Add(2.0)
 
-        $cmdletLines  = @()
-        $cmdletArrows = @()
+        $cmdletLines  = [System.Collections.Generic.List[System.Windows.Shapes.Line]]::new()
+        $cmdletArrows = [System.Collections.Generic.List[System.Windows.Shapes.Polygon]]::new()
         for ($i = 0; $i -lt $allEntries.Count; $i++) {
             $pos  = $cmdletPositions[$i]
             $line = [System.Windows.Shapes.Line]::new()
@@ -2001,8 +2223,8 @@
             $line.StrokeDashArray = $dashes
             $null = $cv.Children.Add($line)
             $arrow = & $addArrow $cv ($pos.NcX + $offsetX) ($pos.NcY + $offsetY) $pos.Angle '#558B2F'
-            $cmdletLines  += $line
-            $cmdletArrows += $arrow
+            $null = $cmdletLines.Add($line)
+            $null = $cmdletArrows.Add($arrow)
         }
 
         # -- Hub -----------------------------------------------------------
@@ -2032,9 +2254,9 @@
         $script:VizHubCanvasX = $cx + $offsetX
         $script:VizHubCanvasY = $cy + $offsetY
         # Hub anchors the START of each spoke line (offset = hub centre)
-        $hubLinks = @()
+        $hubLinks = [System.Collections.Generic.List[hashtable]]::new()
         foreach ($l in $spokeLines) {
-            $hubLinks += @{ Line = $l; End = 'start'; OffsetX = $hubR; OffsetY = $hubR }
+            $null = $hubLinks.Add(@{ Line = $l; End = 'start'; OffsetX = $hubR; OffsetY = $hubR })
         }
         & $makeDraggable $hub $hubLinks
 
@@ -2069,17 +2291,18 @@
             $null = $cv.Children.Add($node)
 
             # Each spoke node owns the END of its hub-spoke line (anchor = node centre).
-            $links = @( @{ Line = $spokeLines[$si]; End = 'end'; OffsetX = 100; OffsetY = 30; Arrow = $null } )
+            $links = [System.Collections.Generic.List[hashtable]]::new()
+            $null = $links.Add(@{ Line = $spokeLines[$si]; End = 'end'; OffsetX = 100; OffsetY = 30; Arrow = $null })
             # The Role spoke (index 0) also anchors the START of every cmdlet line + its arrow.
             if ($si -eq 0) {
                 for ($ci = 0; $ci -lt $cmdletLines.Count; $ci++) {
-                    $links += @{
+                    $null = $links.Add(@{
                         Line    = $cmdletLines[$ci]
                         End     = 'start'
                         OffsetX = $nodeW / 2
                         OffsetY = $nodeH / 2
                         Arrow   = $cmdletArrows[$ci]
-                    }
+                    })
                 }
             }
             & $makeDraggable $node $links
@@ -2105,13 +2328,14 @@
             [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX)
             [System.Windows.Controls.Canvas]::SetTop($node,  $pos.Y + $offsetY)
             $null = $cv.Children.Add($node)
-            $links = @( @{
+            $links = [System.Collections.Generic.List[hashtable]]::new()
+            $null = $links.Add(@{
                 Line    = $cmdletLines[$i]
                 End     = 'end'
                 OffsetX = $cmdletNodeW / 2
                 OffsetY = $cmdletNodeH / 2
                 Arrow   = $cmdletArrows[$i]
-            } )
+            })
             & $makeDraggable $node $links
         }
     }
@@ -2360,7 +2584,7 @@
         Set-Status "Resolving rights for '$User'…"
         try {
             if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
-            $matches = @()
+            $matches = [System.Collections.Generic.List[pscustomobject]]::new()
             foreach ($asg in $script:Cache.Assignments) {
                 $hit = $false
                 if ($asg.RoleAssignee -like "*$User*") { $hit = $true; $via = 'Direct or named' }
@@ -2373,19 +2597,19 @@
                     } catch { }
                 }
                 if ($hit) {
-                    $matches += [PSCustomObject]@{
+                    $null = $matches.Add([PSCustomObject]@{
                         User       = $User
                         Role       = $asg.Role
                         Via        = $via
                         ReadScope  = $asg.RecipientReadScope
                         WriteScope = $asg.RecipientWriteScope
                         _raw       = $asg
-                    }
+                    })
                 }
             }
             $UI.MainGrid.ItemsSource = $matches
-            $UI.ItemCount.Text = "$(@($matches).Count) items"
-            if (@($matches).Count -gt 0) { Set-Status "$User has $(@($matches).Count) effective role(s)." 'ok' }
+            $UI.ItemCount.Text = "$($matches.Count) items"
+            if ($matches.Count -gt 0) { Set-Status "$User has $($matches.Count) effective role(s)." 'ok' }
             else { Set-Status "No assignments found for '$User'." 'warn' }
         }
         catch { Set-Status "Lookup failed: $($_.Exception.Message)" 'error' }
@@ -2467,55 +2691,59 @@
 
     function Get-ActionsForView {
         param([string]$View)
-        $list = @()
+        # Slot convention:
+        #   Left  → primary + neutral CRUD (New, Edit, Copy, Visualize, Lookup, Pick…)
+        #   Mid   → destructive (Delete) — visually isolated from neutral actions
+        #   Right → secondary, never-destructive (Export CSV/PNG)
+        $list = [System.Collections.Generic.List[pscustomobject]]::new()
         switch ($View) {
             'RoleGroups' {
-                $list += (New-ActionButton -Label '+ New'             -Style 'PrimaryBtn' -OnClick { Do-NewRoleGroup })
-                $list += (New-ActionButton -Label 'Edit'              -Style 'ActionBtn'  -OnClick { Do-EditRoleGroup })
-                $list += (New-ActionButton -Label 'Copy'              -Style 'ActionBtn'  -OnClick { Do-CopyRoleGroup })
-                $list += (New-ActionButton -Label 'Delete'            -Style 'WarnBtn'    -OnClick { Do-DeleteRoleGroup })
-                $list += (New-ActionButton -Label 'Export CSV'        -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label '+ New'         -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'          -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-EditRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label 'Copy'          -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-CopyRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'    -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
             'Roles' {
-                $list += (New-ActionButton -Label '+ New (from parent)' -Style 'PrimaryBtn' -OnClick { Do-NewRole })
-                $list += (New-ActionButton -Label 'Edit'                -Style 'ActionBtn'  -OnClick { Do-EditRole })
-                $list += (New-ActionButton -Label 'Copy'                -Style 'ActionBtn'  -OnClick { Do-CopyRole })
-                $list += (New-ActionButton -Label 'Delete'              -Style 'WarnBtn'    -OnClick { Do-DeleteRole })
-                $list += (New-ActionButton -Label 'Export CSV'          -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label '+ New (from parent)' -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewRole }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'                -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-EditRole }))
+                $null = $list.Add((New-ActionButton -Label 'Copy'                -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-CopyRole }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'          -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteRole }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV'       -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
             'Assignments' {
-                $list += (New-ActionButton -Label '+ New'             -Style 'PrimaryBtn' -OnClick { Do-NewAssignment })
-                $list += (New-ActionButton -Label 'Delete'            -Style 'WarnBtn'    -OnClick { Do-DeleteAssignment })
-                $list += (New-ActionButton -Label 'Visualize'         -Style 'ActionBtn'  -OnClick { Visualize-Selected })
-                $list += (New-ActionButton -Label 'Export CSV'        -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label '+ New'         -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewAssignment }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Visualize-Selected }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'    -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteAssignment }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
             'Scopes' {
-                $list += (New-ActionButton -Label '+ New'             -Style 'PrimaryBtn' -OnClick { Do-NewScope })
-                $list += (New-ActionButton -Label 'Edit'              -Style 'ActionBtn'  -OnClick { Do-EditScope })
-                $list += (New-ActionButton -Label 'Delete'            -Style 'WarnBtn'    -OnClick { Do-DeleteScope })
-                $list += (New-ActionButton -Label 'Export CSV'        -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label '+ New'         -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Do-NewScope }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'          -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Do-EditScope }))
+                $null = $list.Add((New-ActionButton -Label '🗑  Delete'    -Style 'WarnBtn'    -Slot 'Mid'   -OnClick { Do-DeleteScope }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
             'UserRights' {
-                $list += (New-ActionButton -Label 'Lookup'            -Style 'PrimaryBtn' -OnClick { Apply-Search })
-                $list += (New-ActionButton -Label 'Visualize'         -Style 'ActionBtn'  -OnClick { Visualize-Selected })
-                $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label 'Lookup'        -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Apply-Search }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Visualize-Selected }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
             'Commands' {
-                $list += (New-ActionButton -Label 'Lookup'            -Style 'PrimaryBtn' -OnClick { Apply-Search })
-                $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn'  -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label 'Lookup'        -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Apply-Search }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
             'Visualizer' {
-                $list += (New-ActionButton -Label 'Pick assignment…'  -Style 'PrimaryBtn' -OnClick { Pick-VizAssignment })
-                $list += (New-ActionButton -Label '➕ Zoom in'         -Style 'ActionBtn'  -OnClick { Zoom-Viz 1.2 })
-                $list += (New-ActionButton -Label '➖ Zoom out'        -Style 'ActionBtn'  -OnClick { Zoom-Viz (1 / 1.2) })
-                $list += (New-ActionButton -Label '⌖ Center'          -Style 'ActionBtn'  -OnClick { Reset-VizTransform; Render-Visualizer })
-                $list += (New-ActionButton -Label '↗ Export PNG'      -Style 'ActionBtn'  -OnClick { Export-VizPng })
+                $null = $list.Add((New-ActionButton -Label 'Pick assignment…' -Style 'PrimaryBtn' -Slot 'Left'  -OnClick { Pick-VizAssignment }))
+                $null = $list.Add((New-ActionButton -Label '➕ Zoom in'        -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Zoom-Viz 1.2 }))
+                $null = $list.Add((New-ActionButton -Label '➖ Zoom out'       -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Zoom-Viz (1 / 1.2) }))
+                $null = $list.Add((New-ActionButton -Label '⌖ Center'         -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Reset-VizTransform; Render-Visualizer }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export PNG'    -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-VizPng }))
             }
             'Audit' {
-                $list += (New-ActionButton -Label '⟳ 7 days'          -Style 'ActionBtn' -OnClick { Load-Audit -Days 7 })
-                $list += (New-ActionButton -Label '⟳ 30 days'         -Style 'ActionBtn' -OnClick { Load-Audit -Days 30 })
-                $list += (New-ActionButton -Label '⟳ 90 days'         -Style 'ActionBtn' -OnClick { Load-Audit -Days 90 })
-                $list += (New-ActionButton -Label '↗ Export CSV'      -Style 'ActionBtn' -OnClick { Export-CurrentView })
+                $null = $list.Add((New-ActionButton -Label '⟳ 7 days'      -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Load-Audit -Days 7 }))
+                $null = $list.Add((New-ActionButton -Label '⟳ 30 days'     -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Load-Audit -Days 30 }))
+                $null = $list.Add((New-ActionButton -Label '⟳ 90 days'     -Style 'ActionBtn'  -Slot 'Left'  -OnClick { Load-Audit -Days 90 }))
+                $null = $list.Add((New-ActionButton -Label '⤓  Export CSV' -Style 'ActionBtn'  -Slot 'Right' -OnClick { Export-CurrentView }))
             }
         }
         return $list
@@ -3134,11 +3362,12 @@
         }
         # Rank: starts-with first, then contains.
         $needle = $q.ToLowerInvariant()
-        $starts = @(); $contains = @()
+        $starts   = [System.Collections.Generic.List[string]]::new()
+        $contains = [System.Collections.Generic.List[string]]::new()
         foreach ($name in $script:CommandSuggestions) {
             $low = $name.ToLowerInvariant()
-            if ($low.StartsWith($needle))    { $starts += $name }
-            elseif ($low.Contains($needle))  { $contains += $name }
+            if ($low.StartsWith($needle))    { $null = $starts.Add($name) }
+            elseif ($low.Contains($needle))  { $null = $contains.Add($name) }
             if (($starts.Count + $contains.Count) -ge 50) { break }
         }
         $matches = @($starts) + @($contains) | Select-Object -First 30
