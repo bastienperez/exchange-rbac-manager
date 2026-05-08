@@ -131,10 +131,10 @@
       </Style.Triggers>
     </Style>
 
-    <!-- Dark pill button used inside the floating action bar. -->
+    <!-- Compact pill button used inside the floating contextual action bar. -->
     <Style x:Key="BtnDark" TargetType="Button">
       <Setter Property="Background"  Value="Transparent"/>
-      <Setter Property="Foreground"  Value="White"/>
+      <Setter Property="Foreground"  Value="#201F1E"/>
       <Setter Property="BorderThickness" Value="0"/>
       <Setter Property="Padding" Value="10,4"/>
       <Setter Property="FontSize" Value="12"/>
@@ -149,7 +149,7 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="#26272D"/>
+                <Setter TargetName="bd" Property="Background" Value="#F3F2F1"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -157,9 +157,9 @@
       </Setter>
     </Style>
 
-    <!-- Destructive variant of the dark pill button (red text, dark red hover). -->
+    <!-- Destructive variant — red text on light surface, soft red on hover. -->
     <Style x:Key="BtnDarkDanger" TargetType="Button" BasedOn="{StaticResource BtnDark}">
-      <Setter Property="Foreground" Value="#FCA5A5"/>
+      <Setter Property="Foreground" Value="#A4262C"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -169,7 +169,7 @@
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
-                <Setter TargetName="bd" Property="Background" Value="#3F1F1F"/>
+                <Setter TargetName="bd" Property="Background" Value="#FDF3F4"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -361,8 +361,23 @@
 
         <Border Grid.Row="3" Padding="14,10" BorderThickness="0,1,0,0">
           <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.25"/></Border.BorderBrush>
-          <TextBlock x:Name="VersionLabel" Foreground="White" Opacity="0.7"
-                     FontFamily="Consolas" FontSize="11"/>
+          <StackPanel>
+            <TextBlock x:Name="VersionLabel" Foreground="White" Opacity="0.7"
+                       FontFamily="Consolas" FontSize="11"/>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+              <TextBlock x:Name="LinkLinkedIn" Text="LinkedIn" Foreground="White" Opacity="0.85"
+                         FontSize="11" Cursor="Hand" TextDecorations="Underline"
+                         ToolTip="https://www.linkedin.com/in/perez-bastien/"/>
+              <TextBlock Text="·" Foreground="White" Opacity="0.5" Margin="6,0" FontSize="11"/>
+              <TextBlock x:Name="LinkGitHub" Text="GitHub" Foreground="White" Opacity="0.85"
+                         FontSize="11" Cursor="Hand" TextDecorations="Underline"
+                         ToolTip="https://github.com/bastienperez/exchange-rbac-manager"/>
+              <TextBlock Text="·" Foreground="White" Opacity="0.5" Margin="6,0" FontSize="11"/>
+              <TextBlock x:Name="LinkClidsys" Text="Clidsys" Foreground="White" Opacity="0.85"
+                         FontSize="11" Cursor="Hand" TextDecorations="Underline"
+                         ToolTip="https://clidsys.com"/>
+            </StackPanel>
+          </StackPanel>
         </Border>
       </Grid>
     </Border>
@@ -400,7 +415,6 @@
             <ColumnDefinition Width="Auto"/>  <!-- Search box -->
             <ColumnDefinition Width="*"/>     <!-- spacer -->
             <ColumnDefinition Width="Auto"/>  <!-- View modifiers (Filter/Wrap/Auto-fit) -->
-            <ColumnDefinition Width="Auto"/>  <!-- Item count chip -->
             <ColumnDefinition Width="Auto"/>  <!-- View-level Tool buttons (Refresh, Export, …) -->
             <ColumnDefinition Width="Auto"/>  <!-- Primary action (+ New) -->
           </Grid.ColumnDefinitions>
@@ -446,14 +460,10 @@
             <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
                     ToolTip="Resize columns to fit current content"/>
           </StackPanel>
-          <Border Grid.Column="3" CornerRadius="10" Padding="10,3" Background="#EFEDEB" VerticalAlignment="Center">
-            <TextBlock x:Name="ItemCount" FontFamily="Consolas" FontSize="11"
-                       Foreground="{StaticResource Subdued}" Text="0 items"/>
-          </Border>
           <!-- View-level tools (Refresh, Export, audit timeframes…) injected by Set-Actions. -->
-          <StackPanel x:Name="ToolbarTools"   Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0"/>
+          <StackPanel x:Name="ToolbarTools"   Grid.Column="3" Orientation="Horizontal" Margin="0,0,0,0"/>
           <!-- Primary view action (+ New, Lookup, Pick assignment…) injected by Set-Actions. -->
-          <StackPanel x:Name="ToolbarPrimary" Grid.Column="5" Orientation="Horizontal" Margin="12,0,0,0"/>
+          <StackPanel x:Name="ToolbarPrimary" Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0"/>
         </Grid>
       </Border>
 
@@ -585,43 +595,27 @@
       </Grid>
 
       <!-- Floating contextual action bar — only visible when at least one row is selected.
-           Compact pill, sits as an overlay above the content row, centered at the bottom. -->
-      <Border x:Name="FloatingActions" Grid.Row="3"
-              Background="#16181D" CornerRadius="9" Padding="6,3"
-              VerticalAlignment="Bottom" HorizontalAlignment="Center"
-              Margin="0,0,0,18" Visibility="Collapsed">
+           Light Fluent pill matching the rest of the app. Sits in Grid.Column=0 only so the
+           details panel slide-out doesn't push the bar off-center. -->
+      <Border x:Name="FloatingActions" Grid.Row="3" Grid.Column="0"
+              Background="White" CornerRadius="9" Padding="6,3"
+              BorderBrush="#0078D4" BorderThickness="2"
+              VerticalAlignment="Bottom" HorizontalAlignment="Left"
+              Margin="24,0,0,18" Visibility="Collapsed">
         <Border.Effect>
-          <DropShadowEffect Color="Black" BlurRadius="20" ShadowDepth="6" Opacity="0.18" Direction="270"/>
+          <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="3" Opacity="0.12" Direction="270"/>
         </Border.Effect>
         <StackPanel Orientation="Horizontal">
-          <Border Background="#26272D" CornerRadius="4" Padding="6,1" VerticalAlignment="Center" Margin="2,0">
+          <Border Background="#EFF6FC" CornerRadius="4" Padding="8,2" VerticalAlignment="Center" Margin="2,0">
             <StackPanel Orientation="Horizontal">
-              <TextBlock x:Name="FloatingCount" Text="0" Foreground="White" FontFamily="Consolas" FontSize="11"/>
-              <TextBlock Text=" selected" Foreground="White" FontSize="11" Margin="2,0,0,0"/>
+              <TextBlock x:Name="FloatingCount" Text="0" Foreground="#0078D4" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"/>
+              <TextBlock Text=" selected" Foreground="#0078D4" FontSize="11" Margin="2,0,0,0"/>
             </StackPanel>
           </Border>
-          <Border Width="1" Height="14" Background="#3A3B40" Margin="6,0"/>
+          <Border Width="1" Height="14" Background="#E1DFDD" Margin="6,0"/>
           <StackPanel x:Name="FloatingSelectionActions" Orientation="Horizontal"/>
-          <Border x:Name="FloatingSep" Width="1" Height="14" Background="#3A3B40" Margin="4,0" Visibility="Collapsed"/>
+          <Border x:Name="FloatingSep" Width="1" Height="14" Background="#E1DFDD" Margin="4,0" Visibility="Collapsed"/>
           <StackPanel x:Name="FloatingDestructive" Orientation="Horizontal"/>
-          <Button x:Name="FloatingClose" Width="22" Height="22" Margin="4,0,0,0"
-                  Background="Transparent" BorderThickness="0" Cursor="Hand"
-                  ToolTip="Clear selection">
-            <Button.Template>
-              <ControlTemplate TargetType="Button">
-                <Border x:Name="bd" Background="Transparent" CornerRadius="4">
-                  <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Border>
-                <ControlTemplate.Triggers>
-                  <Trigger Property="IsMouseOver" Value="True">
-                    <Setter TargetName="bd" Property="Background" Value="#26272D"/>
-                  </Trigger>
-                </ControlTemplate.Triggers>
-              </ControlTemplate>
-            </Button.Template>
-            <TextBlock Text="✕" Foreground="White" FontSize="11" Opacity="0.7"
-                       VerticalAlignment="Center" HorizontalAlignment="Center"/>
-          </Button>
         </StackPanel>
       </Border>
 
@@ -640,8 +634,13 @@
             <TextBlock x:Name="StatusSep" Margin="12,0" Text="|" Foreground="#A19F9D" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusItems" VerticalAlignment="Center" FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
           </StackPanel>
-          <TextBlock x:Name="StatusVersion" Grid.Column="1" Margin="0,0,16,0" VerticalAlignment="Center"
-                     FontFamily="Consolas" FontSize="11" Foreground="#A19F9D"/>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
+            <TextBlock x:Name="ItemCount" Text="0 items" VerticalAlignment="Center"
+                       FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
+            <TextBlock Text="|" Margin="12,0" Foreground="#A19F9D" VerticalAlignment="Center"/>
+            <TextBlock x:Name="StatusVersion" VerticalAlignment="Center"
+                       FontFamily="Consolas" FontSize="11" Foreground="#A19F9D"/>
+          </StackPanel>
         </Grid>
       </Border>
     </Grid>
@@ -706,13 +705,14 @@
     $UI = @{}
     foreach ($n in @(
             'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','VersionLabel',
+            'LinkLinkedIn','LinkGitHub','LinkClidsys',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
             'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost','ChipsHostBorder',
             'BtnFilterRow','BtnWrap','BtnAutoFit','GridModifiers',
             'ItemCount','ToolbarTools','ToolbarPrimary',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder','VizPlaceholderBox',
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose',
-            'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive','FloatingClose',
+            'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
         )) { $UI[$n] = $window.FindName($n) }
 
@@ -1866,6 +1866,7 @@ $($script:DlgResourcesXaml)
             FrozenColumns = 1
             Columns = @(
                 @{ Header='Name';        Path='Name';        Width=240; MinWidth=120 }
+                @{ Header='Origin';      Path='Origin';      Width=100; MinWidth=90;  Kind='Badge'; BadgeMap=$BadgeOrigin }
                 @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
                 @{ Header='Members';     Path='MemberCount'; Width=90;  MinWidth=70; Align='Right'; Format='N0' }
                 @{ Header='Roles';       Path='RoleCount';   Width=80;  MinWidth=60; Align='Right'; Format='N0' }
@@ -2277,12 +2278,23 @@ $($script:DlgResourcesXaml)
             $UI.DetailsTypeBadge.Visibility = 'Collapsed'
         }
 
+        # Map raw property names (Path) to user-facing labels (Header) using the current
+        # view's column config — keeps the details panel consistent with the grid headers.
+        $labelMap = @{}
+        $cfg = $script:Views[$script:CurrentView]
+        if ($cfg -and $cfg.Columns) {
+            foreach ($c in $cfg.Columns) {
+                if ($c.Path -and $c.Header) { $labelMap[[string]$c.Path] = [string]$c.Header }
+            }
+        }
+
         $rows = New-Object System.Collections.ObjectModel.ObservableCollection[Object]
         foreach ($p in $Item.PSObject.Properties) {
             if ($p.Name -like '_*') { continue }
             $val = "$($p.Value)"
             if ([string]::IsNullOrEmpty($val)) { $val = '-' }
-            $rows.Add([PSCustomObject]@{ Key = $p.Name; Value = $val })
+            $label = if ($labelMap.ContainsKey($p.Name)) { $labelMap[$p.Name] } else { $p.Name }
+            $rows.Add([PSCustomObject]@{ Key = $label; Value = $val })
         }
 
         # In the Roles view, append the role's cmdlets below the property rows.
@@ -3801,7 +3813,15 @@ $($script:DlgResourcesXaml)
     $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
     $UI.BtnWrap.Add_Click({ Toggle-Wrap })
     $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
-    $UI.FloatingClose.Add_Click({ $UI.MainGrid.UnselectAll() })
+
+    # External links in the sidebar footer — open in the user's default browser.
+    $openLink = {
+        param($url)
+        try { Start-Process $url } catch { Set-Status "Could not open link: $($_.Exception.Message)" 'error' }
+    }
+    $UI.LinkLinkedIn.Add_MouseLeftButtonDown({ & $openLink 'https://www.linkedin.com/in/perez-bastien/' })
+    $UI.LinkGitHub.Add_MouseLeftButtonDown(  { & $openLink 'https://github.com/bastienperez/exchange-rbac-manager' })
+    $UI.LinkClidsys.Add_MouseLeftButtonDown( { & $openLink 'https://clidsys.com' })
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
     $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
@@ -3819,7 +3839,14 @@ $($script:DlgResourcesXaml)
     $UI.NavUserRights.Add_Click({  Switch-View -View 'UserRights' })
     $UI.NavCommands.Add_Click({    Switch-View -View 'Commands' })
     $UI.NavVisualizer.Add_Click({  Switch-View -View 'Visualizer' })
-    $UI.NavAudit.Add_Click({       Switch-View -View 'Audit' })
+    $UI.NavAudit.Add_Click({
+            [System.Windows.MessageBox]::Show(
+                'The Audit Log section is not available yet. It will be enabled in a future release.',
+                'Coming soon',
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Information) | Out-Null
+            $UI.NavAudit.IsChecked = $false
+        })
 
     $UI.SearchBox.Add_KeyDown({
         param($s,$e)
