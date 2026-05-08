@@ -148,7 +148,9 @@ function Show-RBACSplash {
             $window.FindName('LogoImage').Source =
                 [System.Windows.Media.Imaging.BitmapFrame]::Create($rtb)
         }
-        catch { }
+        catch {
+            Write-Verbose "Splash logo render failed: $($_.Exception.Message)"
+        }
 
         $sync.Window = $window
         $sync.Status = $status

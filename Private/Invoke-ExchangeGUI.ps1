@@ -3456,9 +3456,13 @@ $($script:DlgResourcesXaml)
             return
         }
 
-        Set-Status "Resolving recipients matching scope '$($sel.Name)'…"
+        # Cap the preview to keep the UI thread responsive on large tenants.
+        # Get-Recipient with ResultSize='Unlimited' could otherwise freeze the GUI
+        # and pull tens of thousands of objects.
+        $previewCap = 500
+        Set-Status "Resolving recipients matching scope '$($sel.Name)' (preview capped at $previewCap)…"
         try {
-            $recipientArgs = @{ ResultSize = 'Unlimited'; ErrorAction = 'Stop' }
+            $recipientArgs = @{ ResultSize = $previewCap; ErrorAction = 'Stop' }
             if ($filter) { $recipientArgs.RecipientPreviewFilter = $filter }
             if ($root)   { $recipientArgs.OrganizationalUnit     = $root }
             $recipients = @(Get-Recipient @recipientArgs |
@@ -3469,14 +3473,22 @@ $($script:DlgResourcesXaml)
             return
         }
 
-        Set-Status "$($recipients.Count) recipient(s) match scope '$($sel.Name)'." 'ok'
-        Show-ScopePreview -Scope $sel -Recipients $recipients
+        $truncated = ($recipients.Count -ge $previewCap)
+        if ($truncated) {
+            Set-Status "Showing first $previewCap recipient(s) for scope '$($sel.Name)' (preview truncated; refine the filter or RecipientRoot to narrow the result)." 'warn'
+        }
+        else {
+            Set-Status "$($recipients.Count) recipient(s) match scope '$($sel.Name)'." 'ok'
+        }
+        Show-ScopePreview -Scope $sel -Recipients $recipients -Truncated:$truncated -Cap $previewCap
     }
 
     function Show-ScopePreview {
         param(
             [Parameter(Mandatory)] $Scope,
-            [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Recipients
+            [Parameter(Mandatory)] [AllowEmptyCollection()] [array]$Recipients,
+            [switch] $Truncated,
+            [int]    $Cap
         )
         $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
@@ -3561,7 +3573,11 @@ $($script:DlgResourcesXaml)
         $w.FindName('DlgTitle').Text   = "Scope preview — $($Scope.Name)"
         $w.FindName('DlgSub').Text     = if ($Scope.RecipientRoot) { "Restricted to OU: $($Scope.RecipientRoot)" } else { "Organization-wide" }
         $w.FindName('FilterText').Text = if ($Scope.RecipientFilter) { [string]$Scope.RecipientFilter } else { '(no filter)' }
-        $w.FindName('CountText').Text  = "$($Recipients.Count) items"
+        $w.FindName('CountText').Text  = if ($Truncated) {
+            "$($Recipients.Count) items (truncated at $Cap)"
+        } else {
+            "$($Recipients.Count) items"
+        }
         $list = $w.FindName('RecipientsList')
         $list.ItemsSource = $Recipients
 
