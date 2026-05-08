@@ -46,8 +46,17 @@ function Show-RBACSplash {
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
-        WindowStartupLocation="CenterScreen" Width="440" Height="230"
-        ShowInTaskbar="False" Topmost="True" SizeToContent="Manual">
+        WindowStartupLocation="CenterScreen" Width="460" Height="230"
+        ShowInTaskbar="False" Topmost="True" SizeToContent="Manual" Opacity="0">
+  <Window.Triggers>
+    <EventTrigger RoutedEvent="Window.Loaded">
+      <BeginStoryboard>
+        <Storyboard>
+          <DoubleAnimation Storyboard.TargetProperty="Opacity" From="0" To="1" Duration="0:0:0.18"/>
+        </Storyboard>
+      </BeginStoryboard>
+    </EventTrigger>
+  </Window.Triggers>
   <Border Background="#0078D4" CornerRadius="8" Padding="24">
     <Border.Effect>
       <DropShadowEffect BlurRadius="20" ShadowDepth="2" Opacity="0.35" Color="Black"/>
@@ -60,19 +69,27 @@ function Show-RBACSplash {
         <RowDefinition Height="Auto"/>
         <RowDefinition Height="Auto"/>
       </Grid.RowDefinitions>
-      <StackPanel Grid.Row="0">
-        <TextBlock x:Name="TitleText" Foreground="White" FontFamily="Segoe UI"
-                   FontSize="20" FontWeight="SemiBold"/>
-        <TextBlock x:Name="SubtitleText" Foreground="#DEECF9" FontFamily="Segoe UI"
-                   FontSize="12" Margin="0,2,0,0"/>
-      </StackPanel>
+      <Grid Grid.Row="0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <Image x:Name="LogoImage" Grid.Column="0" Width="40" Height="40" Margin="0,0,12,0"
+               VerticalAlignment="Top"/>
+        <StackPanel Grid.Column="1" VerticalAlignment="Top">
+          <TextBlock x:Name="TitleText" Foreground="White" FontFamily="Segoe UI"
+                     FontSize="20" FontWeight="SemiBold"/>
+          <TextBlock x:Name="SubtitleText" Foreground="#DEECF9" FontFamily="Segoe UI"
+                     FontSize="12" Margin="0,2,0,0"/>
+        </StackPanel>
+        <TextBlock x:Name="VersionText" Grid.Column="2" Foreground="White" Opacity="0.65"
+                   FontFamily="Consolas" FontSize="11" VerticalAlignment="Top"/>
+      </Grid>
       <TextBlock x:Name="StatusText" Grid.Row="2" Foreground="White" FontFamily="Segoe UI"
                  FontSize="12" Margin="0,0,0,8" TextWrapping="Wrap"/>
       <ProgressBar Grid.Row="3" IsIndeterminate="True" Height="6" Foreground="White"
                    Background="#106EBE" BorderThickness="0"/>
-      <TextBlock x:Name="VersionText" Grid.Row="0" Foreground="White" Opacity="0.65"
-                 FontFamily="Consolas" FontSize="11"
-                 HorizontalAlignment="Right" VerticalAlignment="Top"/>
       <TextBlock Grid.Row="4" Text="by Clidsys - Bastien Perez" Foreground="White" Opacity="0.65"
                  FontFamily="Segoe UI" FontSize="10"
                  HorizontalAlignment="Right" Margin="0,8,0,0"/>
@@ -94,6 +111,46 @@ function Show-RBACSplash {
         $window.FindName('VersionText').Text = $versionText
         $status = $window.FindName('StatusText')
         $status.Text = $initialMessage
+
+        # Render the hub-and-spoke logo (white-on-blue, transparent background) inline
+        # so it lives in the splash thread's STA — same approach as the main window icon.
+        try {
+            $sz = 40
+            [double]$cx = $sz / 2.0; [double]$cy = $sz / 2.0
+            [double]$hubR = $sz * 0.16; [double]$spokeR = $sz * 0.10
+            [double]$stroke = [Math]::Max(1.2, $sz * 0.05)
+            $dv = [System.Windows.Media.DrawingVisual]::new()
+            $ctx = $dv.RenderOpen()
+            $whiteBrush = [System.Windows.Media.SolidColorBrush]::new(
+                [System.Windows.Media.Colors]::White)
+            $pen = [System.Windows.Media.Pen]::new($whiteBrush, $stroke)
+            $spokes = @(
+                ,@([double]($sz * 0.18), [double]($sz * 0.22))
+                ,@([double]($sz * 0.82), [double]($sz * 0.22))
+                ,@([double]($sz * 0.50), [double]($sz * 0.82))
+            )
+            foreach ($p in $spokes) {
+                $ctx.DrawLine($pen,
+                    [System.Windows.Point]::new($cx, $cy),
+                    [System.Windows.Point]::new($p[0], $p[1]))
+            }
+            $ctx.DrawEllipse($whiteBrush, $null,
+                [System.Windows.Point]::new($cx, $cy), $hubR, $hubR)
+            foreach ($p in $spokes) {
+                $ctx.DrawEllipse($whiteBrush, $null,
+                    [System.Windows.Point]::new($p[0], $p[1]), $spokeR, $spokeR)
+            }
+            $ctx.Close()
+            $rtb = [System.Windows.Media.Imaging.RenderTargetBitmap]::new(
+                $sz, $sz, 96, 96, [System.Windows.Media.PixelFormats]::Pbgra32)
+            $rtb.Render($dv)
+            $rtb.Freeze()
+            $window.FindName('LogoImage').Source =
+                [System.Windows.Media.Imaging.BitmapFrame]::Create($rtb)
+        }
+        catch {
+            Write-Verbose "Splash logo render failed: $($_.Exception.Message)"
+        }
 
         $sync.Window = $window
         $sync.Status = $status
