@@ -17,7 +17,6 @@ Features
 *   **User Rights lookup** - effective roles for a UPN/alias, including how each role was granted (direct vs via group)
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
 *   **Live filter, contextual actions, CSV/PNG export** - on every view
-*   **Modern auth (MFA-aware) with optional WAM toggle** - via the standard `Connect-ExchangeOnline` flow
 
 Quick Start
 -----------
