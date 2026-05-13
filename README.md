@@ -1,10 +1,10 @@
+[![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/ExchangeRBACManager.svg?label=powershell%20gallery&color=0078D4)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
+[![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/ExchangeRBACManager.svg?label=downloads&color=2EA043)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
+
 Exchange RBAC Manager
 =====================
 
 **PowerShell module with a Windows GUI to explore and manage Role-Based Access Control (RBAC) in Exchange Online**
-
-[![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/ExchangeRBACManager.svg?label=powershell%20gallery)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
-[![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/ExchangeRBACManager.svg?label=downloads)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
 
 Instead of stitching together `Get-RoleGroup`, `Get-ManagementRoleAssignment`, `Get-ManagementScope`, `Search-AdminAuditLog` and friends by hand, you browse and act on them through a single Fluent-style window organised by RBAC concept.
 
