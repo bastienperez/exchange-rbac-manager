@@ -1,12 +1,15 @@
 Exchange RBAC Manager
 =====================
 
-**PowerShell module with a Windows GUI to explore and manage Role-Based Access Control (RBAC) in Exchange Online** [![PowerShell Gallery](https://img.shields.io/powershellgallery/v/ExchangeRBACManager.svg)](https://www.powershellgallery.com/packages/ExchangeRBACManager) [![PowerShell Gallery](https://img.shields.io/powershellgallery/dt/ExchangeRBACManager.svg)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
+**PowerShell module with a Windows GUI to explore and manage Role-Based Access Control (RBAC) in Exchange Online**
+
+[![PowerShell Gallery Version](https://img.shields.io/powershellgallery/v/ExchangeRBACManager.svg?label=powershell%20gallery)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
+[![PowerShell Gallery Downloads](https://img.shields.io/powershellgallery/dt/ExchangeRBACManager.svg?label=downloads)](https://www.powershellgallery.com/packages/ExchangeRBACManager)
 
 Instead of stitching together `Get-RoleGroup`, `Get-ManagementRoleAssignment`, `Get-ManagementScope`, `Search-AdminAuditLog` and friends by hand, you browse and act on them through a single Fluent-style window organised by RBAC concept.
 
-🚀 Features
------------
+Features
+--------
 
 *   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, exportable to PNG
 *   **Eight integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, Audit Log
@@ -16,8 +19,8 @@ Instead of stitching together `Get-RoleGroup`, `Get-ManagementRoleAssignment`, `
 *   **Live filter, contextual actions, CSV/PNG export** - on every view
 *   **Modern auth (MFA-aware) with optional WAM toggle** - via the standard `Connect-ExchangeOnline` flow
 
-⚡ Quick Start
--------------
+Quick Start
+-----------
 
 ### Installation
 
@@ -51,8 +54,8 @@ A single window opens. Click **Connect to Exchange Online** in the sidebar to au
 - [`ExchangeOnlineManagement`](https://www.powershellgallery.com/packages/ExchangeOnlineManagement) (auto-installed on first launch if missing)
 - An Exchange Online tenant and an account with the appropriate Exchange RBAC role (at minimum **View-Only Organization Management** for read scenarios, **Organization Management** for write actions)
 
-🎯 RBAC Visualizer - the headline feature
------------------------------------------
+RBAC Visualizer - the headline feature
+--------------------------------------
 
 ![RBAC Visualizer](docs/screenshots/rbac-visualizer.png)
 
@@ -73,8 +76,8 @@ Buttons:
 
 Typically the section you open first when investigating an unexpected permission, preparing a change request, or documenting a delegation for an audit.
 
-🧭 The eight sections
----------------------
+The eight sections
+------------------
 
 Each section wraps a specific Exchange RBAC cmdlet (or composition of cmdlets) and exposes the same toolbar pattern: live search, chip filters, *Refresh*, *Export CSV*, plus contextual actions on selected rows.
 
@@ -142,14 +145,14 @@ The reverse of every other section: instead of starting from a role and finding 
 
 Planned for a future release. Clicking the *Audit Log* section currently shows a "coming soon" notice. The implementation will call `Search-AdminAuditLog` over the last 7 / 30 / 90 days (limit imposed by Exchange Online) and surface recent admin changes (caller, cmdlet, target object, parameters).
 
-🛠️ Public commands
--------------------
+Public commands
+---------------
 
 - `Invoke-ExchangeRBACManager` - launches the GUI
 - `Invoke-ExchangeRBACRelationship` - generates a standalone HTML diagram of role-group -> role -> assignment relationships (separate from the embedded Visualizer)
 
-🔗 Links
---------
+Links
+-----
 
 *   **PowerShell Gallery**: [ExchangeRBACManager Module](https://www.powershellgallery.com/packages/ExchangeRBACManager)
 *   **Issues & Support**: [GitHub Issues](https://github.com/bastienperez/exchange-rbac-manager/issues)
