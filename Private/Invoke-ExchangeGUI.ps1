@@ -508,7 +508,7 @@ function Invoke-ExchangeGUI {
         <Grid>
           <Grid x:Name="VizHost" Visibility="Collapsed" Background="White">
             <ScrollViewer x:Name="VizScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
-              <Canvas x:Name="VizCanvas" Background="White" ClipToBounds="True"/>
+              <Canvas x:Name="VizCanvas" Background="White" ClipToBounds="False"/>
             </ScrollViewer>
             <Border x:Name="VizPlaceholderBox" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Background="#F3F2F1" CornerRadius="6" Padding="14,10">
@@ -2357,6 +2357,47 @@ $($script:DlgResourcesXaml)
             $rows.Add([PSCustomObject]@{ Key = $label; Value = $val })
         }
 
+        # In the Scopes view, list which role assignments reference this scope
+        # (as CustomRecipientReadScope, CustomRecipientWriteScope, or as the
+        # resolved Read/Write scope name). Sourced from the cached assignments
+        # if available so it doesn't trigger an extra round-trip - if the cache
+        # is empty we load it once and reuse it.
+        if ($script:CurrentView -eq 'Scopes' -and $Item.Name) {
+            $assignments = $script:Cache.Assignments
+            if (-not $assignments) {
+                try {
+                    $assignments = @(Get-RBACRoleAssignments)
+                    $script:Cache.Assignments = $assignments
+                }
+                catch { $assignments = @() }
+            }
+            $scopeName = "$($Item.Name)"
+            $used = @($assignments | Where-Object {
+                "$($_.CustomRecipientReadScope)"  -eq $scopeName -or
+                "$($_.CustomRecipientWriteScope)" -eq $scopeName -or
+                "$($_.RecipientReadScope)"        -like "*$scopeName*" -or
+                "$($_.RecipientWriteScope)"       -like "*$scopeName*"
+            } | Sort-Object Name)
+            $rows.Add([PSCustomObject]@{
+                Key   = "Used by ($($used.Count) assignment$(if ($used.Count -eq 1) { '' } else { 's' }))"
+                Value = ''
+            })
+            if ($used.Count -eq 0) {
+                $rows.Add([PSCustomObject]@{ Key = ''; Value = '(not referenced by any assignment)' })
+            }
+            else {
+                foreach ($a in $used) {
+                    $where = if    ("$($a.CustomRecipientReadScope)"  -eq $scopeName) { 'read' }
+                             elseif ("$($a.CustomRecipientWriteScope)" -eq $scopeName) { 'write' }
+                             else { 'scope' }
+                    $rows.Add([PSCustomObject]@{
+                        Key   = ''
+                        Value = "$($a.Name) [$where -> $($a.Role)]"
+                    })
+                }
+            }
+        }
+
         # In the Roles view, append the role's cmdlets below the property rows.
         # Cache per role so reselecting the same role doesn't re-hit the service.
         if ($script:CurrentView -eq 'Roles' -and $Item.Name) {
@@ -2452,6 +2493,41 @@ $($script:DlgResourcesXaml)
         try {
             $allEntries = @(Get-ManagementRoleEntry "$($a.Role)\*" -ErrorAction Stop)
         } catch { $allEntries = @() }
+
+        # -- Group cmdlets by verb (read / modify / destructive / create / other)
+        # Verb is the part before the first dash. Same-verb cmdlets are placed
+        # contiguously around the role node and share a colour palette so the
+        # diagram instantly conveys "this role grants 5 reads, 3 writes, 1 delete".
+        $verbPalettes = @{
+            Read        = @{ Bg='#C5E1A5'; Border='#558B2F'; Fg='#33691E' } # green
+            Modify      = @{ Bg='#FFE082'; Border='#B28704'; Fg='#5C3A00' } # amber
+            Destructive = @{ Bg='#FFCDD2'; Border='#A4262C'; Fg='#7A1A1F' } # red
+            Create      = @{ Bg='#BBDEFB'; Border='#0078D4'; Fg='#0B4A78' } # blue
+            Other       = @{ Bg='#E1BEE7'; Border='#6A1B9A'; Fg='#3F0C57' } # purple
+        }
+        $verbToGroup = @{
+            'Get' = 'Read'; 'Find' = 'Read'; 'Search' = 'Read'; 'Test' = 'Read'; 'Measure' = 'Read'
+            'Set' = 'Modify'; 'Update' = 'Modify'; 'Edit' = 'Modify'; 'Sync' = 'Modify'
+            'Remove' = 'Destructive'; 'Disable' = 'Destructive'; 'Stop' = 'Destructive'; 'Clear' = 'Destructive'
+            'New' = 'Create'; 'Add' = 'Create'; 'Enable' = 'Create'; 'Start' = 'Create'; 'Install' = 'Create'
+        }
+        # Per-entry classification + ordering: group, then verb, then full name.
+        $groupOrder = @{ Read=0; Modify=1; Destructive=2; Create=3; Other=4 }
+        foreach ($e in $allEntries) {
+            $rawName = "$($e.Name)"
+            $shortName = ($rawName -split '\\')[-1]
+            $verb      = ($shortName -split '-', 2)[0]
+            $grp       = $verbToGroup[$verb]
+            if (-not $grp) { $grp = 'Other' }
+            $e | Add-Member -NotePropertyName 'CmdletVerb'       -NotePropertyValue $verb               -Force
+            $e | Add-Member -NotePropertyName 'CmdletGroup'      -NotePropertyValue $grp                -Force
+            $e | Add-Member -NotePropertyName 'CmdletGroupOrder' -NotePropertyValue $groupOrder[$grp]   -Force
+            $e | Add-Member -NotePropertyName 'CmdletShortName'  -NotePropertyValue $shortName          -Force
+        }
+        # Sort on plain string/int properties - scriptblock expressions can lose
+        # access to the enclosing scope in some hosts and produce a junk ordering
+        # (which surfaced as a misplaced empty node on the canvas).
+        $allEntries = @($allEntries | Sort-Object CmdletGroupOrder, CmdletVerb, CmdletShortName)
 
         $spokes = @(
             @{ Label='What · Role';     Name=$a.Role;                Sub='';                       Bg='#DFF6DD'; X=$cx - 280; Y=$cy - 200 }
@@ -2589,6 +2665,14 @@ $($script:DlgResourcesXaml)
                 $newY = $t.ElemY + ($p.Y - $t.StartY)
                 [System.Windows.Controls.Canvas]::SetLeft($s, $newX)
                 [System.Windows.Controls.Canvas]::SetTop($s, $newY)
+
+                # Auto-grow the canvas so the dragged node never falls outside
+                # the ScrollViewer's scrollable region. 60 = margin past the
+                # element so users can keep dragging without hitting a wall.
+                $needW = $newX + $s.ActualWidth  + 60
+                $needH = $newY + $s.ActualHeight + 60
+                if ($needW -gt $t.Canvas.Width)  { $t.Canvas.Width  = $needW }
+                if ($needH -gt $t.Canvas.Height) { $t.Canvas.Height = $needH }
                 foreach ($lk in $t.Links) {
                     $ax = $newX + $lk.OffsetX
                     $ay = $newY + $lk.OffsetY
@@ -2735,18 +2819,19 @@ $($script:DlgResourcesXaml)
         for ($i = 0; $i -lt $allEntries.Count; $i++) {
             $pos   = $cmdletPositions[$i]
             $entry = $allEntries[$i]
+            $pal   = $verbPalettes[$entry.CmdletGroup]
             $node  = [System.Windows.Controls.Border]::new()
             $node.Width        = $cmdletNodeW
             $node.CornerRadius = '3'
-            $node.Background   = '#C5E1A5'
-            $node.BorderBrush  = '#558B2F'
+            $node.Background   = $pal.Bg
+            $node.BorderBrush  = $pal.Border
             $node.BorderThickness = 1
             $node.Padding      = '5,2'
             $tb = [System.Windows.Controls.TextBlock]::new()
-            $tb.Text        = $entry.Name
+            $tb.Text        = if ($entry.CmdletShortName) { $entry.CmdletShortName } else { "$($entry.Name)" }
             $tb.FontSize    = 9; $tb.FontWeight = 'SemiBold'
-            $tb.TextTrimming = 'CharacterEllipsis'; $tb.Foreground = '#33691E'
-            $tb.ToolTip = "$($entry.Name) [$($entry.Type)]"
+            $tb.TextTrimming = 'CharacterEllipsis'; $tb.Foreground = $pal.Fg
+            $tb.ToolTip = "$($entry.Name) [$($entry.CmdletGroup) - $($entry.CmdletVerb)]"
             $node.Child = $tb
             [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX)
             [System.Windows.Controls.Canvas]::SetTop($node,  $pos.Y + $offsetY)
@@ -2760,6 +2845,48 @@ $($script:DlgResourcesXaml)
                 Arrow   = $cmdletArrows[$i]
             })
             & $makeDraggable $node $links
+        }
+
+        # -- Legend (only if there are cmdlets to colour-code) -------------
+        if ($allEntries.Count -gt 0) {
+            # Count cmdlets per group to drive the legend labels.
+            $groupCounts = @{}
+            foreach ($e in $allEntries) {
+                if (-not $groupCounts.ContainsKey($e.CmdletGroup)) { $groupCounts[$e.CmdletGroup] = 0 }
+                $groupCounts[$e.CmdletGroup]++
+            }
+            $legend = [System.Windows.Controls.Border]::new()
+            $legend.Background = '#F3F2F1'
+            $legend.BorderBrush = '#C8C6C4'
+            $legend.BorderThickness = 1
+            $legend.CornerRadius = '4'
+            $legend.Padding = '8,5'
+            $legendPanel = [System.Windows.Controls.StackPanel]::new()
+            $legendPanel.Orientation = 'Horizontal'
+            $title = [System.Windows.Controls.TextBlock]::new()
+            $title.Text = 'CMDLETS BY GROUP'; $title.FontFamily = 'Consolas'; $title.FontSize = 9
+            $title.Foreground = '#605E5C'; $title.VerticalAlignment = 'Center'; $title.Margin = '0,0,10,0'
+            $null = $legendPanel.Children.Add($title)
+            $orderedGroups = @('Read','Modify','Destructive','Create','Other')
+            foreach ($g in $orderedGroups) {
+                if (-not $groupCounts.ContainsKey($g)) { continue }
+                $p   = $verbPalettes[$g]
+                $sw  = [System.Windows.Shapes.Rectangle]::new()
+                $sw.Width = 12; $sw.Height = 12
+                $sw.Fill = $p.Bg
+                $sw.Stroke = $p.Border; $sw.StrokeThickness = 1
+                $sw.Margin = '6,0,4,0'; $sw.VerticalAlignment = 'Center'
+                $null = $legendPanel.Children.Add($sw)
+                $lbl = [System.Windows.Controls.TextBlock]::new()
+                $lbl.Text = "$g ($($groupCounts[$g]))"
+                $lbl.FontSize = 11; $lbl.Foreground = '#201F1E'
+                $lbl.VerticalAlignment = 'Center'
+                $null = $legendPanel.Children.Add($lbl)
+            }
+            $legend.Child = $legendPanel
+            [System.Windows.Controls.Canvas]::SetLeft($legend, 12)
+            [System.Windows.Controls.Canvas]::SetTop($legend, 12)
+            $null = $cv.Children.Add($legend)
         }
     }
 
@@ -2844,7 +2971,14 @@ $($script:DlgResourcesXaml)
                     Set-Status 'Loading management scopes…'
                     $data = @(Get-RBACManagementScopes)
                     $script:Cache.Scopes = $data
-                    $UI.MainGrid.ItemsSource = $data
+                    # Route the initial paint through Apply-Filters - which is
+                    # the same code path that works correctly on chip clicks -
+                    # instead of assigning ItemsSource directly. Direct assign
+                    # was rendering only the first row on first paint; once
+                    # we re-binded via Apply-Filters all rows appeared. So we
+                    # just always go through Apply-Filters on scope load.
+                    $UI.MainGrid.ItemsSource = $null
+                    Apply-Filters
                     $UI.ItemCount.Text = "$(@($data).Count) items"
                     Set-Status "Loaded $(@($data).Count) scopes." 'ok'
                 }
@@ -3179,6 +3313,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label '+ New Assignment' -Style 'PrimaryBtn' -Kind 'Primary'     -OnClick { Do-NewAssignment }))
                 $null = $list.Add((New-ActionButton -Label '⟳  Refresh'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Reload-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Edit'            -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditAssignment }))
                 $null = $list.Add((New-ActionButton -Label '⤳  Visualize'   -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Selected }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'      -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteAssignment }))
             }
@@ -3471,6 +3606,243 @@ $($script:DlgResourcesXaml)
         $ok = Handle-WriteResult -Result $r -Title 'New-ManagementRoleAssignment' `
                 -SuccessMsg "Created assignment '$($form.Name)'." -RunBlock {
             New-RBACAssignment @callArgs
+        }
+        if ($ok) { Load-ViewData -View 'Assignments' }
+    }
+
+    function Show-EditAssignmentForm {
+        param([Parameter(Mandatory)] $Assignment)
+        $xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="" Width="520" SizeToContent="Height" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" FontSize="12" Background="White" ResizeMode="NoResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="16,10">
+      <StackPanel>
+        <TextBlock Text="Edit role assignment" FontSize="14" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="Only the write scope and enabled flag are editable. Read scope is inherited from the Role."
+                   FontSize="11" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+
+    <StackPanel Grid.Row="1" Margin="16,12">
+      <!-- Two-column read-only block: label | value -->
+      <Grid Margin="0,0,0,4">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="90"/>
+          <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Grid.Column="0" Text="Assignment" Foreground="#605E5C" Margin="0,2"/>
+        <TextBlock x:Name="LblName"      Grid.Row="0" Grid.Column="1" Foreground="#201F1E" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,2"/>
+        <TextBlock Grid.Row="1" Grid.Column="0" Text="Role"       Foreground="#605E5C" Margin="0,2"/>
+        <TextBlock x:Name="LblRole"      Grid.Row="1" Grid.Column="1" Foreground="#201F1E" TextTrimming="CharacterEllipsis" Margin="0,2"/>
+        <TextBlock Grid.Row="2" Grid.Column="0" Text="Assignee"   Foreground="#605E5C" Margin="0,2"/>
+        <TextBlock x:Name="LblAssignee"  Grid.Row="2" Grid.Column="1" Foreground="#201F1E" TextTrimming="CharacterEllipsis" Margin="0,2"/>
+        <TextBlock Grid.Row="3" Grid.Column="0" Text="Read scope" Foreground="#605E5C" Margin="0,2"/>
+        <TextBlock x:Name="LblReadScope" Grid.Row="3" Grid.Column="1" Foreground="#201F1E" TextTrimming="CharacterEllipsis" Margin="0,2"/>
+      </Grid>
+
+      <Border BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Margin="0,10,0,10"/>
+
+      <TextBlock Text="Write scope" FontWeight="SemiBold" Foreground="#201F1E" Margin="0,0,0,6"/>
+
+      <ComboBox x:Name="CmbWriteKind" Style="{StaticResource DlgComboBox}">
+        <ComboBoxItem Content="Keep current" Tag="Keep"/>
+        <ComboBoxItem Content="Predefined (RecipientRelativeWriteScope)" Tag="Relative"/>
+        <ComboBoxItem Content="Custom scope (existing scope name)" Tag="Custom"/>
+        <ComboBoxItem Content="Organizational Unit (DN)" Tag="Ou"/>
+        <ComboBoxItem Content="Clear (revert to role default)" Tag="Clear"/>
+      </ComboBox>
+
+      <!-- Dynamic input area: exactly one of these shows depending on CmbWriteKind. -->
+      <Grid x:Name="GridInputs" Margin="0,8,0,0">
+        <TextBlock x:Name="PnlKeep" Foreground="#605E5C" FontSize="11" TextWrapping="Wrap"/>
+        <ComboBox x:Name="CmbRelative" Style="{StaticResource DlgComboBox}" Visibility="Collapsed"/>
+        <ComboBox x:Name="CmbCustom"   Style="{StaticResource DlgComboBox}" Visibility="Collapsed" IsEditable="True"/>
+        <TextBox  x:Name="TxtOu"       Style="{StaticResource DlgTextBox}"  Visibility="Collapsed"/>
+        <TextBlock x:Name="PnlClear"   Foreground="#A4262C" FontSize="11" TextWrapping="Wrap" Visibility="Collapsed"
+                   Text="The CustomRecipientWriteScope will be cleared; the assignment will fall back to the role's default write scope."/>
+      </Grid>
+
+      <CheckBox x:Name="ChkEnabled" Content="Enabled" Margin="0,12,0,0"/>
+    </StackPanel>
+
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="16,10">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource DlgBtn}"        Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOk"     Content="OK"     Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
+"@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
+        $w = [System.Windows.Markup.XamlReader]::Load($reader); $w.Title = 'Edit assignment'; $w.Owner = $window
+        $UIDlg = @{}
+        foreach ($n in @('LblName','LblRole','LblAssignee','LblReadScope',
+                          'CmbWriteKind','PnlKeep','CmbRelative','CmbCustom','TxtOu','PnlClear',
+                          'ChkEnabled','BtnOk','BtnCancel')) {
+            $UIDlg[$n] = $w.FindName($n)
+        }
+        $UIDlg.LblName.Text      = "$($Assignment.Name)"
+        $UIDlg.LblRole.Text      = "$($Assignment.Role)"
+        $UIDlg.LblAssignee.Text  = "$($Assignment.RoleAssignee) ($($Assignment.RoleAssigneeType))"
+        $UIDlg.LblReadScope.Text = "$($Assignment.RecipientReadScope) (implicit, from Role)"
+        $UIDlg.PnlKeep.Text      = "Current: $($Assignment.RecipientWriteScope)"
+        $UIDlg.ChkEnabled.IsChecked = [bool]$Assignment.Enabled
+
+        # Switch which input is visible based on the WriteKind combo. Only the
+        # selected variant takes screen space, so the popup stays compact.
+        $UIDlg.CmbWriteKind.Add_SelectionChanged({
+            $tag = "$($UIDlg.CmbWriteKind.SelectedItem.Tag)"
+            $UIDlg.PnlKeep.Visibility     = if ($tag -eq 'Keep')     { 'Visible' } else { 'Collapsed' }
+            $UIDlg.CmbRelative.Visibility = if ($tag -eq 'Relative') { 'Visible' } else { 'Collapsed' }
+            $UIDlg.CmbCustom.Visibility   = if ($tag -eq 'Custom')   { 'Visible' } else { 'Collapsed' }
+            $UIDlg.TxtOu.Visibility       = if ($tag -eq 'Ou')       { 'Visible' } else { 'Collapsed' }
+            $UIDlg.PnlClear.Visibility    = if ($tag -eq 'Clear')    { 'Visible' } else { 'Collapsed' }
+
+            # Lazy-populate the predefined enum the first time the user picks
+            # "Predefined". The values are the public RecipientWriteScopeEnum,
+            # stable across EXO versions.
+            if ($tag -eq 'Relative' -and $UIDlg.CmbRelative.Items.Count -eq 0) {
+                $values = @('Organization','Self','MyGAL','MyDirectReports','MyDistributionGroups','NotApplicable')
+                foreach ($v in $values) {
+                    $it = [System.Windows.Controls.ComboBoxItem]::new()
+                    $it.Content = $v
+                    [void]$UIDlg.CmbRelative.Items.Add($it)
+                }
+                $UIDlg.CmbRelative.SelectedIndex = 0
+            }
+
+            # Lazy-populate the custom-scope list with existing recipient
+            # scopes. Reuse $script:Cache.Scopes when available (saves a round
+            # trip); otherwise call Get-ManagementScope once and cache it.
+            if ($tag -eq 'Custom' -and $UIDlg.CmbCustom.Items.Count -eq 0) {
+                try {
+                    $src = $script:Cache.Scopes
+                    if (-not $src) {
+                        Set-Status 'Loading management scopes...' 'info'
+                        $src = @(Get-RBACManagementScopes)
+                        $script:Cache.Scopes = $src
+                    }
+                    # Only recipient-type scopes can be used as
+                    # CustomRecipientWriteScope; filter to those for safety.
+                    $candidates = $src | Where-Object {
+                        "$($_.ScopeRestrictionType)" -like '*Recipient*'
+                    } | Sort-Object Name
+                    foreach ($s in $candidates) {
+                        $it = [System.Windows.Controls.ComboBoxItem]::new()
+                        $it.Content = "$($s.Name)"
+                        [void]$UIDlg.CmbCustom.Items.Add($it)
+                    }
+                    if ($UIDlg.CmbCustom.Items.Count -gt 0) {
+                        # Pre-select the assignment's current scope if it's in the list.
+                        $cur = "$($Assignment.CustomRecipientWriteScope)"
+                        if ($cur) { $UIDlg.CmbCustom.Text = $cur }
+                    }
+                }
+                catch {
+                    Set-Status "Could not load scopes: $($_.Exception.Message)" 'error'
+                }
+            }
+        })
+        $UIDlg.CmbWriteKind.SelectedIndex = 0  # default: Keep current
+
+        $script:_FormResult = $null
+        $UIDlg.BtnOk.Add_Click({
+            $tag = "$($UIDlg.CmbWriteKind.SelectedItem.Tag)"
+            $result = [pscustomobject]@{
+                Identity                          = "$($UIDlg.LblName.Text)".Trim()
+                Action                            = $tag
+                RecipientRelativeWriteScope       = $null
+                CustomRecipientWriteScope         = $null
+                RecipientOrganizationalUnitScope  = $null
+                Enabled                           = [bool]$UIDlg.ChkEnabled.IsChecked
+            }
+            switch ($tag) {
+                'Relative' {
+                    $v = "$($UIDlg.CmbRelative.SelectedItem.Content)".Trim()
+                    if (-not $v) {
+                        [System.Windows.MessageBox]::Show('Pick a predefined scope value.','Missing field',
+                            [System.Windows.MessageBoxButton]::OK,[System.Windows.MessageBoxImage]::Warning) | Out-Null
+                        return
+                    }
+                    $result.RecipientRelativeWriteScope = $v
+                }
+                'Custom' {
+                    # IsEditable="True" on CmbCustom -> .Text holds either the
+                    # selected item's content or whatever the user typed.
+                    $v = "$($UIDlg.CmbCustom.Text)".Trim()
+                    if (-not $v -and $UIDlg.CmbCustom.SelectedItem) {
+                        $v = "$($UIDlg.CmbCustom.SelectedItem.Content)".Trim()
+                    }
+                    if (-not $v) {
+                        [System.Windows.MessageBox]::Show('Pick (or type) a scope name.','Missing field',
+                            [System.Windows.MessageBoxButton]::OK,[System.Windows.MessageBoxImage]::Warning) | Out-Null
+                        return
+                    }
+                    $result.CustomRecipientWriteScope = $v
+                }
+                'Ou' {
+                    $v = "$($UIDlg.TxtOu.Text)".Trim()
+                    if (-not $v) {
+                        [System.Windows.MessageBox]::Show('Enter the OU distinguished name.','Missing field',
+                            [System.Windows.MessageBoxButton]::OK,[System.Windows.MessageBoxImage]::Warning) | Out-Null
+                        return
+                    }
+                    $result.RecipientOrganizationalUnitScope = $v
+                }
+            }
+            $script:_FormResult = $result
+            $w.DialogResult = $true; $w.Close()
+        })
+        $UIDlg.BtnCancel.Add_Click({ $w.DialogResult = $false; $w.Close() })
+        if ($w.ShowDialog()) { return $script:_FormResult }
+        return $null
+    }
+
+    function Do-EditAssignment {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select an assignment to edit.' 'warn'; return }
+        $form = Show-EditAssignmentForm -Assignment $sel
+        if (-not $form) { return }
+
+        # Only pass the parameters that genuinely changed. In particular,
+        # Set-ManagementRoleAssignment -Enabled $true on an already-enabled
+        # assignment emits a WARNING ("L'attribution ... est déjà activée").
+        $callArgs = @{ Identity = $form.Identity }
+        if ([bool]$form.Enabled -ne [bool]$sel.Enabled) {
+            $callArgs.Enabled = [bool]$form.Enabled
+        }
+        switch ($form.Action) {
+            'Relative' { $callArgs.RecipientRelativeWriteScope = $form.RecipientRelativeWriteScope }
+            'Custom'   { $callArgs.CustomRecipientWriteScope   = $form.CustomRecipientWriteScope }
+            'Ou'       { $callArgs.RecipientOrganizationalUnitScope = $form.RecipientOrganizationalUnitScope }
+            'Clear'    { $callArgs.CustomRecipientWriteScope   = '' }
+            # 'Keep' = nothing to add for the scope
+        }
+        if ($callArgs.Count -le 1) {
+            Set-Status 'Nothing to update.' 'warn'
+            return
+        }
+
+        $r  = Set-RBACAssignment @callArgs -DryRun
+        $ok = Handle-WriteResult -Result $r -Title 'Set-ManagementRoleAssignment' `
+                -SuccessMsg "Updated assignment '$($form.Identity)'." -RunBlock {
+            Set-RBACAssignment @callArgs
         }
         if ($ok) { Load-ViewData -View 'Assignments' }
     }
@@ -3872,18 +4244,21 @@ $($script:DlgResourcesXaml)
         try {
             $useWam = ($UI.ChkUseWAM.IsChecked -eq $true)
             $brokerLabel = if ($useWam) { 'WAM enabled' } else { 'WAM disabled' }
-            Set-Status "Connecting to Exchange Online ($brokerLabel)…"
+            Set-Status "Connecting to Exchange Online ($brokerLabel)..."
 
             $loadingMsg = if ($useWam) {
-                'Connecting to Exchange Online (WAM)…'
+                'Connecting to Exchange Online (WAM)...'
             }
             else {
-                "Connecting to Exchange Online…`nA browser sign-in window will open. Complete sign-in there, then return to this app."
+                "Connecting to Exchange Online...`nA browser sign-in window will open. Complete sign-in there, then return to this app.`n(The window will freeze briefly until sign-in completes.)"
             }
             Show-Loading -Message $loadingMsg
 
-            # Force the UI to repaint before Connect-ExchangeOnline takes over the thread
-            # (the auth flow blocks this dispatcher and would otherwise hide the status).
+            # Force a render before Connect-ExchangeOnline takes the dispatcher.
+            # Connect-ExchangeOnline can't be moved to a child runspace because
+            # the module imports its proxy cmdlets into the calling runspace -
+            # disposing the child runspace would lose the session and the cmdlets
+            # would be invisible from the main runspace.
             $window.Dispatcher.Invoke(
                 [action]{},
                 [System.Windows.Threading.DispatcherPriority]::Render
@@ -3891,12 +4266,35 @@ $($script:DlgResourcesXaml)
 
             $connectArgs = @{}
             if (-not $useWam) { $connectArgs['DisableWAM'] = $true }
-            $null = Connect-RBACExchangeOnline @connectArgs
+
+            # MSAL.NET (used by Connect-ExchangeOnline -DisableWAM) captures the
+            # WPF dispatcher's SynchronizationContext and tries to marshal the
+            # post-browser auth callback back to the UI thread. Since the UI
+            # thread is synchronously blocked inside Connect-ExchangeOnline,
+            # that callback can never run -> deadlock right after the browser
+            # shows "Authentication complete". Clear the current SyncContext
+            # for the duration of the call so MSAL uses the thread pool
+            # instead and the cmdlet returns normally.
+            $prevSyncCtx = [System.Threading.SynchronizationContext]::Current
+            try {
+                [System.Threading.SynchronizationContext]::SetSynchronizationContext($null)
+                $null = Connect-RBACExchangeOnline @connectArgs
+            }
+            finally {
+                [System.Threading.SynchronizationContext]::SetSynchronizationContext($prevSyncCtx)
+            }
+
             Update-ConnectionUI
             Set-Status 'Connected. Click Refresh or pick a section in the sidebar to load data.' 'ok'
         }
         catch { Set-Status "Connect failed: $($_.Exception.Message)" 'error' }
-        finally { Hide-Loading }
+        finally {
+            Hide-Loading
+            $window.Dispatcher.Invoke(
+                [action]{},
+                [System.Windows.Threading.DispatcherPriority]::Render
+            )
+        }
     }
     function Do-Disconnect {
         try {

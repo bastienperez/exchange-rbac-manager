@@ -209,38 +209,63 @@ function Get-RBACManagementScopes {
     param()
     
     try {
-        $scopes = @(Get-ManagementScope)
-        if ($scopes.Count -eq 0) { return @() }
-
-        # Build a flat PSCustomObject per scope. Using Add-Member -PassThru on the
-        # raw EXO object is brittle: some scope types ship with an Origin or
-        # FilterSummary property already, the chained pipe then breaks and the
-        # function returns junk (single string), which makes the WPF DataGrid
-        # throw "Cannot convert ... to IEnumerable".
-        $displayData = foreach ($s in $scopes) {
-            $filterSummary = if ($s.RecipientFilter) { [string]$s.RecipientFilter } else { '' }
-            $origin        = if ($s.Default)         { 'Built-in' } else { 'Custom' }
-            [PSCustomObject]@{
-                Name                    = $s.Name
-                ScopeRestrictionType    = $s.ScopeRestrictionType
-                RecipientRoot           = $s.RecipientRoot
-                RecipientFilter         = $s.RecipientFilter
-                DatabaseRestrictionFilter = $s.DatabaseRestrictionFilter
-                ServerRestrictionFilter = $s.ServerRestrictionFilter
-                Exclusive               = $s.Exclusive
-                Default                 = $s.Default
-                FilterSummary           = $filterSummary
-                Origin                  = $origin
-                _raw                    = $s
-            }
-        }
-        # Comma operator forces PowerShell to return the array as-is instead of
-        # unwrapping a single-element collection into a scalar (which would make
-        # the WPF DataGrid.ItemsSource setter throw "Cannot convert ... to
-        # IEnumerable" when the tenant has exactly one scope).
-        return ,@($displayData)
+        $scopes = @(Get-ManagementScope -ErrorAction Stop)
     }
     catch {
         throw "Error loading management scopes: $_"
     }
+    if ($scopes.Count -eq 0) { return @() }
+    Write-Verbose "Get-RBACManagementScopes: Get-ManagementScope returned $($scopes.Count) scope(s)"
+
+    # Per-scope try/catch so one bad scope doesn't silently drop all the
+    # others. Symptom we just hit: 3 scopes in the tenant, only 1 reaching
+    # the UI - the property-projection for a single scope was throwing and
+    # an outer try/catch was swallowing the iteration mid-flight.
+    $displayData = [System.Collections.Generic.List[object]]::new()
+    foreach ($s in $scopes) {
+        try {
+            # EXO can return RecipientFilter as a multi-valued property
+            # (one entry per OR'd clause). Naively interpolating it joins
+            # with a single space and the resulting OPATH is invalid.
+            $rawFilter = $s.RecipientFilter
+            $filterStr = ''
+            if ($null -ne $rawFilter) {
+                if ($rawFilter -is [string]) {
+                    $filterStr = $rawFilter
+                }
+                elseif ($rawFilter -is [System.Collections.IEnumerable]) {
+                    $parts = [System.Collections.Generic.List[string]]::new()
+                    foreach ($p in $rawFilter) {
+                        $t = "$p".Trim()
+                        if ($t) { $null = $parts.Add("($t)") }
+                    }
+                    if ($parts.Count -gt 0) { $filterStr = ($parts -join ' -or ') }
+                }
+                else {
+                    $filterStr = [string]$rawFilter
+                }
+            }
+            $origin = if ($s.Default) { 'Built-in' } else { 'Custom' }
+            $obj = [PSCustomObject]@{
+                Name                      = "$($s.Name)"
+                ScopeRestrictionType      = "$($s.ScopeRestrictionType)"
+                RecipientRoot             = "$($s.RecipientRoot)"
+                RecipientFilter           = $filterStr
+                DatabaseRestrictionFilter = "$($s.DatabaseRestrictionFilter)"
+                ServerRestrictionFilter   = "$($s.ServerRestrictionFilter)"
+                Exclusive                 = [bool]$s.Exclusive
+                Default                   = [bool]$s.Default
+                FilterSummary             = $filterStr
+                Origin                    = $origin
+                _raw                      = $s
+            }
+            $null = $displayData.Add($obj)
+        }
+        catch {
+            Write-Warning "Get-RBACManagementScopes: skipping scope '$($s.Name)' - $($_.Exception.Message)"
+        }
+    }
+    # Comma operator forces PowerShell to return the array as-is instead of
+    # unwrapping a single-element collection into a scalar.
+    return ,@($displayData)
 }

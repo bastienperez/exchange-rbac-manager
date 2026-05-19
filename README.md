@@ -11,12 +11,29 @@ Instead of stitching together `Get-RoleGroup`, `Get-ManagementRoleAssignment`, `
 Features
 --------
 
-*   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, exportable to PNG
+*   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other), exportable to PNG
 *   **Eight integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, Audit Log
+*   **Edit role assignments** - change the write scope (predefined / custom recipient scope picker / OU DN / clear) and the enabled flag, with a built-in cmdlet preview before any change is run
 *   **Scope membership preview** - validate a `RecipientRestrictionFilter` *before* attaching it to an assignment
+*   **Scope cross-reference** - the details panel of a scope shows every role assignment that references it (read / write / scope) so you can answer "where is this scope used?" without writing a script
 *   **User Rights lookup** - effective roles for a UPN/alias, including how each role was granted (direct vs via group)
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
 *   **Live filter, contextual actions, CSV/PNG export** - on every view
+
+What's new in 1.0.0
+-------------------
+
+*   **Edit role assignments**: new compact dialog focused on the write scope. Pick one of four modes - Keep current / Predefined (`RecipientRelativeWriteScope` enum) / Custom recipient scope (loaded dynamically from the tenant's existing scopes) / OU distinguished name / Clear - plus an Enabled toggle. Read scope stays read-only with an explanation that it is inherited from the parent Role and not editable at assignment level in Exchange Online.
+*   **Visualizer grouped by verb**: cmdlets granted by the selected role are now sorted and colour-coded by verb group (Read / Modify / Destructive / Create / Other), with a legend in the corner of the canvas and per-cmdlet tooltips showing the group. Nodes are draggable and the canvas now auto-grows so a node dragged off-screen remains accessible via the scrollbars.
+*   **Scope "Used by" panel**: clicking a scope in the Scopes view lists every assignment that references it in the details panel.
+*   **Built-in vs Custom classification fixed across the board**: Roles now classify built-in vs custom from `IsRootRole` / `IsEndUserRole` / parent-of-others (the My* roles were previously mis-flagged Custom). Scopes carry an `Origin` badge driven by the `Default` property.
+*   **Sturdier Scopes pipeline**: `Get-ManagementScope` multi-valued filters are now rejoined with `-or` instead of being concatenated by spaces (which produced invalid OPATH on preview). The Scopes view also recovers gracefully if EXO returns one bad scope - it logs a warning and keeps the rest.
+*   **Auth UX**: WAM is now off by default (one click on the *i* icon next to the checkbox explains what WAM is). A loading overlay covers the window during browser sign-in. The `SynchronizationContext` is temporarily cleared around the call to work around a deadlock between MSAL.NET and the WPF dispatcher that left the GUI frozen after the browser had returned.
+*   **Lazy data loading**: connecting no longer auto-loads Role Groups. The status bar invites you to pick a section in the sidebar, with an indeterminate progress overlay during each fetch.
+*   **Audit Log section temporarily gated** behind a "coming soon" notice while the implementation is finalised.
+*   **Status bar revamped**: taller, Segoe UI 14 SemiBold, wraps long messages, colour-coded per severity (error in red, warn in amber, ok in default, info in Fluent blue).
+*   **Floating contextual action bar restyled** to a light Fluent pill with a coloured outline, anchored to the data column only (no longer overlaps the details panel when it slides out).
+*   **README revamped**: badges, dedicated "headline feature" section for the Visualizer, expanded section-by-section walkthrough.
 
 Quick Start
 -----------

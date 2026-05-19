@@ -263,6 +263,69 @@ function New-RBACAssignment {
     return (Invoke-RBACWrite -Cmdlet 'New-ManagementRoleAssignment' -Parameters $params -DryRun:$DryRun)
 }
 
+function Set-RBACAssignment {
+    <#
+    .SYNOPSIS
+    Update an existing management role assignment. Only the write scope and the
+    enabled flag are mutable - the Read scope is implicit (inherited from the
+    parent Role) and cannot be set at assignment level in Exchange Online.
+
+    The three *WriteScope parameters are mutually exclusive on Exchange's side;
+    pass at most one. Pass an empty string to clear a value (e.g. ''CustomRecipientWriteScope').
+    .PARAMETER Identity
+    Existing assignment name (or DN).
+    .PARAMETER CustomRecipientWriteScope
+    Name of a custom management scope to use as the write scope.
+    .PARAMETER RecipientOrganizationalUnitScope
+    OU DN. The assignment will only write to recipients under that OU.
+    .PARAMETER RecipientRelativeWriteScope
+    Predefined scope. Valid: Organization, Self, MyGAL, MyDirectReports,
+    MyDistributionGroups, NotApplicable.
+    .PARAMETER Enabled
+    Toggle the assignment on/off.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)] [string]$Identity,
+        [Parameter()]                   [string]$CustomRecipientWriteScope,
+        [Parameter()]                   [string]$RecipientOrganizationalUnitScope,
+        [Parameter()]
+            [ValidateSet('Organization','Self','MyGAL','MyDirectReports','MyDistributionGroups','NotApplicable')]
+                                        [string]$RecipientRelativeWriteScope,
+        [Parameter()]                   [Nullable[bool]]$Enabled,
+        [Parameter()]                   [switch]$DryRun
+    )
+
+    $params = @{ Identity = $Identity }
+    if ($PSBoundParameters.ContainsKey('CustomRecipientWriteScope')) {
+        $params.CustomRecipientWriteScope = $CustomRecipientWriteScope
+    }
+    if ($PSBoundParameters.ContainsKey('RecipientOrganizationalUnitScope')) {
+        $params.RecipientOrganizationalUnitScope = $RecipientOrganizationalUnitScope
+    }
+    if ($PSBoundParameters.ContainsKey('RecipientRelativeWriteScope')) {
+        $params.RecipientRelativeWriteScope = $RecipientRelativeWriteScope
+    }
+    if ($PSBoundParameters.ContainsKey('Enabled') -and $null -ne $Enabled) {
+        $params.Enabled = [bool]$Enabled
+    }
+
+    if ($params.Count -le 1) {
+        return [pscustomobject]@{
+            Preview  = ''
+            Result   = $null
+            Executed = $false
+            Error    = [System.Management.Automation.ErrorRecord]::new(
+                          [System.ArgumentException]::new('Nothing to update - pass at least one of CustomRecipientWriteScope / RecipientOrganizationalUnitScope / RecipientRelativeWriteScope / Enabled.'),
+                          'NothingToUpdate',
+                          [System.Management.Automation.ErrorCategory]::InvalidArgument,
+                          $null)
+        }
+    }
+
+    return (Invoke-RBACWrite -Cmdlet 'Set-ManagementRoleAssignment' -Parameters $params -DryRun:$DryRun)
+}
+
 function Remove-RBACAssignment {
     <#
     .SYNOPSIS
