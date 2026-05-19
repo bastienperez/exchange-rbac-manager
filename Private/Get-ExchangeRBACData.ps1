@@ -10,7 +10,7 @@ function Get-RBACRoleGroups {
     [CmdletBinding()]
     param()
 
-    # Built-in Exchange Online role groups — exact names.
+    # Built-in Exchange Online role groups - exact names.
     $builtInRoleGroupNames = @(
         'Compliance Administrator', 'Compliance Management',
         'Communication Compliance', 'Communication Compliance Administrators',
@@ -91,22 +91,40 @@ function Get-RBACRoles {
     .SYNOPSIS
         Get Exchange RBAC roles
     .DESCRIPTION
-        Retrieves management roles from Exchange with formatted data for display
+        Retrieves management roles from Exchange and tags each with an Origin
+        (Built-in vs Custom) using algorithmic signals only - no curated name
+        list to maintain.
+
+        A role is classified Built-in if any of these hold:
+          - IsRootRole = $true (top-level shipped role)
+          - IsEndUserRole = $true (the My* self-service roles)
+          - The role's Name appears as the Parent of at least one other role
+            (= intermediate node of the built-in role tree)
+
+        Anything else is Custom (admin-created via New-ManagementRole).
     .EXAMPLE
         Get-RBACRoles
     #>
     [CmdletBinding()]
     param()
-    
+
     try {
         $roles = Get-ManagementRole -ErrorAction Stop
-        
-        if ($roles -and $roles.Count -gt 0) {
-            return $roles
+        if (-not $roles -or $roles.Count -eq 0) { return @() }
+
+        # Build the set of names that act as a Parent for at least one role.
+        $parentNames = @{}
+        foreach ($r in $roles) {
+            $p = "$($r.Parent)"
+            if ($p) { $parentNames[$p] = $true }
         }
-        else {
-            return @()
+
+        foreach ($r in $roles) {
+            $isBuiltIn = $r.IsRootRole -or $r.IsEndUserRole -or $parentNames.ContainsKey([string]$r.Name)
+            $origin = if ($isBuiltIn) { 'Built-in' } else { 'Custom' }
+            $r | Add-Member -NotePropertyName 'Origin' -NotePropertyValue $origin -Force
         }
+        return $roles
     }
     catch {
         throw "Failed to retrieve roles: $($_.Exception.Message)"
@@ -191,20 +209,36 @@ function Get-RBACManagementScopes {
     param()
     
     try {
-        $scopes = Get-ManagementScope
-        
-        if ($scopes) {
-            # Expose the full RecipientFilter as FilterSummary for the GUI; truncation
-            # is the UI's job (wrap toggle, ellipsis with full-value tooltip).
-            $displayData = $scopes | ForEach-Object {
-                $filterSummary = if ($_.RecipientFilter) { [string]$_.RecipientFilter } else { '' }
-                $_ | Add-Member -NotePropertyName 'FilterSummary' -NotePropertyValue $filterSummary -PassThru
+        $scopes = @(Get-ManagementScope)
+        if ($scopes.Count -eq 0) { return @() }
+
+        # Build a flat PSCustomObject per scope. Using Add-Member -PassThru on the
+        # raw EXO object is brittle: some scope types ship with an Origin or
+        # FilterSummary property already, the chained pipe then breaks and the
+        # function returns junk (single string), which makes the WPF DataGrid
+        # throw "Cannot convert ... to IEnumerable".
+        $displayData = foreach ($s in $scopes) {
+            $filterSummary = if ($s.RecipientFilter) { [string]$s.RecipientFilter } else { '' }
+            $origin        = if ($s.Default)         { 'Built-in' } else { 'Custom' }
+            [PSCustomObject]@{
+                Name                    = $s.Name
+                ScopeRestrictionType    = $s.ScopeRestrictionType
+                RecipientRoot           = $s.RecipientRoot
+                RecipientFilter         = $s.RecipientFilter
+                DatabaseRestrictionFilter = $s.DatabaseRestrictionFilter
+                ServerRestrictionFilter = $s.ServerRestrictionFilter
+                Exclusive               = $s.Exclusive
+                Default                 = $s.Default
+                FilterSummary           = $filterSummary
+                Origin                  = $origin
+                _raw                    = $s
             }
-            return $displayData
         }
-        else {
-            return @()
-        }
+        # Comma operator forces PowerShell to return the array as-is instead of
+        # unwrapping a single-element collection into a scalar (which would make
+        # the WPF DataGrid.ItemsSource setter throw "Cannot convert ... to
+        # IEnumerable" when the tenant has exactly one scope).
+        return ,@($displayData)
     }
     catch {
         throw "Error loading management scopes: $_"

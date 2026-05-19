@@ -1,4 +1,4 @@
-﻿function Invoke-ExchangeGUI {
+function Invoke-ExchangeGUI {
     <#
     .SYNOPSIS
         Modern WPF GUI for Exchange RBAC Manager - wireframe-derived layout.
@@ -69,8 +69,10 @@
                 <Setter TargetName="bd" Property="Background" Value="White"/>
                 <Setter TargetName="bd" Property="CornerRadius" Value="6,0,0,6"/>
                 <Setter TargetName="bd" Property="Margin" Value="8,1,0,1"/>
+                <Setter TargetName="bd" Property="Padding" Value="10,0"/>
                 <Setter TargetName="lbl" Property="Foreground" Value="#0078D4"/>
                 <Setter TargetName="active" Property="Opacity" Value="1"/>
+                <Setter TargetName="active" Property="Margin" Value="-10,0,0,0"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -157,7 +159,7 @@
       </Setter>
     </Style>
 
-    <!-- Destructive variant — red text on light surface, soft red on hover. -->
+    <!-- Destructive variant - red text on light surface, soft red on hover. -->
     <Style x:Key="BtnDarkDanger" TargetType="Button" BasedOn="{StaticResource BtnDark}">
       <Setter Property="Foreground" Value="#A4262C"/>
       <Setter Property="Template">
@@ -335,9 +337,26 @@
               <TextBlock x:Name="ConnStatus" Text="disconnected" Foreground="White"
                          FontFamily="Consolas" FontSize="11" Margin="6,0,0,0"/>
             </StackPanel>
-            <CheckBox x:Name="ChkUseWAM" Content="Use WAM (broker)" Foreground="White" Margin="0,8,0,0"
-                      IsChecked="True"
-                      ToolTip="Web Account Manager is the default broker in ExchangeOnlineManagement 3.7.0+. Uncheck to pass -DisableWAM."/>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+              <CheckBox x:Name="ChkUseWAM" Content="Use WAM (broker)" Foreground="White"
+                        IsChecked="False" VerticalAlignment="Center"/>
+              <Button x:Name="BtnWamInfo" Margin="6,0,0,0" Padding="0"
+                      Background="Transparent" BorderThickness="0" Cursor="Hand"
+                      ToolTip="What is WAM?">
+                <Button.Template>
+                  <ControlTemplate TargetType="Button">
+                    <TextBlock x:Name="lbl" Text="&#xE946;" FontFamily="Segoe MDL2 Assets"
+                               Foreground="#DEECF9" FontSize="14"
+                               VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                    <ControlTemplate.Triggers>
+                      <Trigger Property="IsMouseOver" Value="True">
+                        <Setter TargetName="lbl" Property="Foreground" Value="White"/>
+                      </Trigger>
+                    </ControlTemplate.Triggers>
+                  </ControlTemplate>
+                </Button.Template>
+              </Button>
+            </StackPanel>
             <Button x:Name="BtnConnect" Content="Connect to Exchange Online" Margin="0,8,0,0" Height="30"
                     Background="White" Foreground="#0078D4" BorderThickness="0" FontWeight="SemiBold" Cursor="Hand"/>
             <Button x:Name="BtnDisconnect" Content="Disconnect" Margin="0,4,0,0" Height="28"
@@ -392,7 +411,7 @@
         <RowDefinition Height="Auto"/>  <!-- Status bar -->
       </Grid.RowDefinitions>
 
-      <!-- Content head — no bottom border, the toolbar's own divider handles separation. -->
+      <!-- Content head - no bottom border, the toolbar's own divider handles separation. -->
       <Border Grid.Row="0" Padding="24,18,24,16">
         <Grid>
           <Grid.ColumnDefinitions>
@@ -497,6 +516,21 @@
                          Foreground="#605E5C" FontSize="13"/>
             </Border>
           </Grid>
+          <Border x:Name="LoadingOverlay" Background="#B3FFFFFF" Visibility="Collapsed">
+            <Border Background="White" BorderBrush="#0078D4" BorderThickness="1" CornerRadius="8"
+                    Padding="20,16" HorizontalAlignment="Center" VerticalAlignment="Center" MinWidth="260">
+              <Border.Effect>
+                <DropShadowEffect Color="Black" BlurRadius="20" ShadowDepth="4" Opacity="0.18" Direction="270"/>
+              </Border.Effect>
+              <StackPanel>
+                <TextBlock x:Name="LoadingText" Text="Loading…" Foreground="#201F1E" FontSize="13"
+                           FontWeight="SemiBold" Margin="0,0,0,8" HorizontalAlignment="Center"
+                           TextAlignment="Center" TextWrapping="Wrap" MaxWidth="320"/>
+                <ProgressBar IsIndeterminate="True" Height="6" Foreground="#0078D4" Background="#EDEBE9"
+                             BorderThickness="0" Width="240"/>
+              </StackPanel>
+            </Border>
+          </Border>
         </Grid>
         </Grid>
         <Border x:Name="DetailsPanel" Grid.Column="1" Background="{StaticResource ToolbarBg}"
@@ -594,7 +628,7 @@
         </Border>
       </Grid>
 
-      <!-- Floating contextual action bar — only visible when at least one row is selected.
+      <!-- Floating contextual action bar - only visible when at least one row is selected.
            Light Fluent pill matching the rest of the app. Sits in Grid.Column=0 only so the
            details panel slide-out doesn't push the bar off-center. -->
       <Border x:Name="FloatingActions" Grid.Row="3" Grid.Column="0"
@@ -621,23 +655,35 @@
 
       <!-- Status bar -->
       <Border Grid.Row="4" Background="{StaticResource StatusBg}"
-              BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,0">
-        <Grid Height="26">
+              BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,0"
+              Padding="0,8">
+        <Grid MinHeight="48">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0" Orientation="Horizontal" Margin="16,0">
-            <TextBlock x:Name="StatusDot" Foreground="#107C10" Text="●" VerticalAlignment="Center"/>
-            <TextBlock x:Name="StatusText" Margin="6,0,0,0" Text="Ready" VerticalAlignment="Center"
-                       FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
-            <TextBlock x:Name="StatusSep" Margin="12,0" Text="|" Foreground="#A19F9D" VerticalAlignment="Center"/>
-            <TextBlock x:Name="StatusItems" VerticalAlignment="Center" FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
-          </StackPanel>
+          <Grid Grid.Column="0" Margin="16,0">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusDot" Grid.Column="0" Foreground="#107C10" Text="●" FontSize="16"
+                       VerticalAlignment="Center"/>
+            <TextBlock x:Name="StatusText" Grid.Column="1" Margin="10,0,0,0" Text="Ready"
+                       VerticalAlignment="Center"
+                       FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold" Foreground="#201F1E"
+                       TextWrapping="Wrap" TextTrimming="None"/>
+            <TextBlock x:Name="StatusSep" Grid.Column="2" Margin="14,0" Text="|"
+                       Foreground="#A19F9D" VerticalAlignment="Center"/>
+            <TextBlock x:Name="StatusItems" Grid.Column="3" VerticalAlignment="Center"
+                       FontFamily="Segoe UI" FontSize="12" Foreground="#605E5C"/>
+          </Grid>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
             <TextBlock x:Name="ItemCount" Text="0 items" VerticalAlignment="Center"
-                       FontFamily="Consolas" FontSize="11" Foreground="#605E5C"/>
-            <TextBlock Text="|" Margin="12,0" Foreground="#A19F9D" VerticalAlignment="Center"/>
+                       FontFamily="Segoe UI" FontSize="12" Foreground="#605E5C"/>
+            <TextBlock Text="|" Margin="14,0" Foreground="#A19F9D" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusVersion" VerticalAlignment="Center"
                        FontFamily="Consolas" FontSize="11" Foreground="#A19F9D"/>
           </StackPanel>
@@ -704,7 +750,7 @@
     # ---------------- UI lookup helpers ----------------
     $UI = @{}
     foreach ($n in @(
-            'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','VersionLabel',
+            'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','BtnWamInfo','VersionLabel',
             'LinkLinkedIn','LinkGitHub','LinkClidsys',
             'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
             'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost','ChipsHostBorder',
@@ -713,6 +759,7 @@
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder','VizPlaceholderBox',
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose',
             'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive',
+            'LoadingOverlay','LoadingText',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
         )) { $UI[$n] = $window.FindName($n) }
 
@@ -742,10 +789,22 @@
         param([string]$Message, [ValidateSet('info','warn','error','ok')]$Level = 'info')
         $UI.StatusText.Text = $Message
         switch ($Level) {
-            'error' { $UI.StatusDot.Foreground = '#A4262C' }
-            'warn'  { $UI.StatusDot.Foreground = '#D29200' }
-            'ok'    { $UI.StatusDot.Foreground = '#107C10' }
-            default { $UI.StatusDot.Foreground = '#107C10' }
+            'error' {
+                $UI.StatusDot.Foreground  = '#A4262C'
+                $UI.StatusText.Foreground = '#A4262C'
+            }
+            'warn'  {
+                $UI.StatusDot.Foreground  = '#D29200'
+                $UI.StatusText.Foreground = '#8A5A00'
+            }
+            'ok'    {
+                $UI.StatusDot.Foreground  = '#107C10'
+                $UI.StatusText.Foreground = '#201F1E'
+            }
+            default {
+                $UI.StatusDot.Foreground  = '#0078D4'
+                $UI.StatusText.Foreground = '#201F1E'
+            }
         }
     }
 
@@ -924,7 +983,7 @@
 
     # ---------------- Write-mode helpers ----------------
     # All write actions go through Show-CmdletPreview which exposes
-    # "Run cmdlet" / "Copy cmdlet" / "Cancel" buttons — no global toggle needed.
+    # "Run cmdlet" / "Copy cmdlet" / "Cancel" buttons - no global toggle needed.
 
     # Shared resource block injected into every modal dialog so they all share
     # the same input/button/label styling as the main window.
@@ -1052,7 +1111,7 @@
       <RowDefinition Height="Auto"/>  <!-- footer with buttons -->
     </Grid.RowDefinitions>
 
-    <!-- Header band — same off-white surface as the main toolbar. -->
+    <!-- Header band - same off-white surface as the main toolbar. -->
     <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1"
             Padding="20,16">
       <StackPanel>
@@ -1062,7 +1121,7 @@
       </StackPanel>
     </Border>
 
-    <!-- Code body — monospace on a soft surface so it reads as a code block. -->
+    <!-- Code body - monospace on a soft surface so it reads as a code block. -->
     <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1"
             Padding="20,16">
       <Border Background="White" BorderBrush="#E1DFDD" BorderThickness="1" CornerRadius="6">
@@ -1700,7 +1759,7 @@ $($script:DlgResourcesXaml)
     <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
       <StackPanel>
         <TextBlock x:Name="DlgTitle" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
-        <TextBlock Text="Restrict where a role applies — by OU, by recipient filter, or both."
+        <TextBlock Text="Restrict where a role applies - by OU, by recipient filter, or both."
                    FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
@@ -1780,7 +1839,7 @@ $($script:DlgResourcesXaml)
     function Handle-WriteResult {
         <#
         Takes the dry-run result of a write action, shows the cmdlet preview to
-        the user and — if they click "Run cmdlet" — invokes the supplied
+        the user and - if they click "Run cmdlet" - invokes the supplied
         RunBlock to execute the action live.
         Returns $true when the live action ran successfully, $false otherwise.
         #>
@@ -1905,10 +1964,11 @@ $($script:DlgResourcesXaml)
             Crumbs = 'RBAC ▸ Management Scopes'
             Title  = 'Scopes'
             Desc   = 'Where a role applies - recipient or server filters.'
-            Chips  = @('all','implicit','custom','recipient','server')
+            Chips  = @('all','implicit','recipient','server')
             FrozenColumns = 1
             Columns = @(
                 @{ Header='Scope Name';       Path='Name';                  Width=220; MinWidth=140 }
+                @{ Header='Origin';           Path='Origin';                Width=100; MinWidth=90;  Kind='Badge'; BadgeMap=$BadgeOrigin }
                 @{ Header='Type';             Path='ScopeRestrictionType';  Width=160; MinWidth=130; Kind='Badge'; BadgeMap=$BadgeScopeType }
                 @{ Header='OU';               Path='RecipientRoot';         Width=200; MinWidth=140 }
                 @{ Header='Recipient Filter'; Path='FilterSummary';         Width='*'; MinWidth=160 }
@@ -2024,7 +2084,7 @@ $($script:DlgResourcesXaml)
             $headerLabel.VerticalAlignment = [System.Windows.VerticalAlignment]::Center
             $null = $titleRow.Children.Add($headerLabel)
 
-            # Sort arrow — visibility/glyph driven by the parent DataGridColumnHeader's
+            # Sort arrow - visibility/glyph driven by the parent DataGridColumnHeader's
             # SortDirection via DataTriggers (no direct event wiring needed).
             $sortArrow = [System.Windows.Controls.TextBlock]::new()
             $sortArrow.FontSize    = 9
@@ -2259,7 +2319,7 @@ $($script:DlgResourcesXaml)
         if (-not $title) { $title = '(item)' }
         $UI.DetailsTitle.Text = "$title"
 
-        # Item-type chip in the header — derived from the current view name.
+        # Item-type chip in the header - derived from the current view name.
         $badgeMap = @{
             RoleGroups  = 'ROLE GROUP'
             Roles       = 'ROLE'
@@ -2279,7 +2339,7 @@ $($script:DlgResourcesXaml)
         }
 
         # Map raw property names (Path) to user-facing labels (Header) using the current
-        # view's column config — keeps the details panel consistent with the grid headers.
+        # view's column config - keeps the details panel consistent with the grid headers.
         $labelMap = @{}
         $cfg = $script:Views[$script:CurrentView]
         if ($cfg -and $cfg.Columns) {
@@ -2713,11 +2773,37 @@ $($script:DlgResourcesXaml)
         return $true
     }
 
+    function Show-Loading {
+        param([string]$Message = 'Loading…')
+        $UI.LoadingText.Text = $Message
+        $UI.LoadingOverlay.Visibility = 'Visible'
+        # Force the dispatcher to render the overlay before the blocking call below
+        # takes over the UI thread.
+        $window.Dispatcher.Invoke(
+            [action]{},
+            [System.Windows.Threading.DispatcherPriority]::Render
+        )
+    }
+    function Hide-Loading {
+        $UI.LoadingOverlay.Visibility = 'Collapsed'
+    }
+
     function Load-ViewData {
         param([string]$View)
         if ($View -ne 'UserRights' -and $View -ne 'Commands' -and $View -ne 'Visualizer') {
             if (-not (Require-Connected)) { return }
         }
+        $loadingLabel = switch ($View) {
+            'RoleGroups'  { 'Loading role groups…' }
+            'Roles'       { 'Loading roles…' }
+            'Assignments' { 'Loading role assignments…' }
+            'Scopes'      { 'Loading management scopes…' }
+            'UserRights'  { 'Loading…' }
+            'Commands'    { 'Loading…' }
+            'Visualizer'  { 'Loading…' }
+            default       { 'Loading…' }
+        }
+        Show-Loading -Message $loadingLabel
         try {
             switch ($View) {
                 'RoleGroups' {
@@ -2732,11 +2818,10 @@ $($script:DlgResourcesXaml)
                     Set-Status 'Loading roles…'
                     $roles = Get-RBACRoles
                     $display = foreach ($r in $roles) {
-                        $origin = if ($r.RoleType -eq 'UnScoped') { 'Custom' } elseif ("$($r.Parent)") { 'Custom' } else { 'Built-in' }
                         [PSCustomObject]@{
                             Name        = $r.Name
                             RoleType    = $r.RoleType
-                            Origin      = $origin
+                            Origin      = $r.Origin
                             Parent      = $r.Parent
                             Description = $r.Description
                             _raw        = $r
@@ -2757,7 +2842,7 @@ $($script:DlgResourcesXaml)
                 }
                 'Scopes' {
                     Set-Status 'Loading management scopes…'
-                    $data = Get-RBACManagementScopes
+                    $data = @(Get-RBACManagementScopes)
                     $script:Cache.Scopes = $data
                     $UI.MainGrid.ItemsSource = $data
                     $UI.ItemCount.Text = "$(@($data).Count) items"
@@ -2792,6 +2877,9 @@ $($script:DlgResourcesXaml)
         }
         catch {
             Set-Status "Error: $($_.Exception.Message)" 'error'
+        }
+        finally {
+            Hide-Loading
         }
     }
 
@@ -2863,13 +2951,12 @@ $($script:DlgResourcesXaml)
                 $t = "$($Row.ScopeRestrictionType)"
                 switch ($Chip) {
                     'implicit'  { return ($t -like '*Implicit*') }
-                    'custom'    { return ($t -notlike '*Implicit*') }
                     'recipient' { return ($t -like '*Recipient*') }
                     'server'    { return ($t -like '*Server*') }
                 }
             }
             'Audit' {
-                # Audit chips drive the query window — handled at load time, not here.
+                # Audit chips drive the query window - handled at load time, not here.
                 return $true
             }
         }
@@ -2936,6 +3023,13 @@ $($script:DlgResourcesXaml)
         $filtered = @($filtered)
         $UI.MainGrid.ItemsSource = $filtered
         $UI.ItemCount.Text = "$(@($filtered).Count) items"
+        $srcCount = @($src).Count
+        $hasColFilter = ($colFilters.Count -gt 0)
+        $hasSearch    = ($q -ne '')
+        $diag = "chip='$chip' src=$srcCount → shown=$(@($filtered).Count)"
+        if ($hasSearch)    { $diag += " (search='$q')" }
+        if ($hasColFilter) { $diag += " (column filters active)" }
+        Set-Status $diag 'info'
     }
 
     # Backward-compat alias kept for existing event wiring
@@ -2985,10 +3079,11 @@ $($script:DlgResourcesXaml)
         try {
             $roles = Get-ManagementRole -Cmdlet $Cmdlet -ErrorAction Stop
             $rows = foreach ($r in $roles) {
+                $isBuiltIn = $r.IsRootRole -or $r.IsEndUserRole
                 [PSCustomObject]@{
                     RoleName    = $r.Name
                     RoleType    = $r.RoleType
-                    Origin      = if ($r.Parent) { 'Custom' } else { 'Built-in' }
+                    Origin      = if ($isBuiltIn) { 'Built-in' } else { 'Custom' }
                     Description = $r.Description
                 }
             }
@@ -3464,7 +3559,7 @@ $($script:DlgResourcesXaml)
         $filter = "$($sel.RecipientFilter)".Trim()
         $root   = "$($sel.RecipientRoot)".Trim()
         if (-not $filter -and -not $root) {
-            Set-Status "Scope '$($sel.Name)' has neither a RecipientFilter nor a RecipientRoot — nothing to preview." 'warn'
+            Set-Status "Scope '$($sel.Name)' has neither a RecipientFilter nor a RecipientRoot - nothing to preview." 'warn'
             return
         }
 
@@ -3580,9 +3675,9 @@ $($script:DlgResourcesXaml)
 "@
         $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
         $w = [System.Windows.Markup.XamlReader]::Load($reader)
-        $w.Title = "Scope preview — $($Scope.Name)"
+        $w.Title = "Scope preview - $($Scope.Name)"
         $w.Owner = $window
-        $w.FindName('DlgTitle').Text   = "Scope preview — $($Scope.Name)"
+        $w.FindName('DlgTitle').Text   = "Scope preview - $($Scope.Name)"
         $w.FindName('DlgSub').Text     = if ($Scope.RecipientRoot) { "Restricted to OU: $($Scope.RecipientRoot)" } else { "Organization-wide" }
         $w.FindName('FilterText').Text = if ($Scope.RecipientFilter) { [string]$Scope.RecipientFilter } else { '(no filter)' }
         $w.FindName('CountText').Text  = if ($Truncated) {
@@ -3779,6 +3874,14 @@ $($script:DlgResourcesXaml)
             $brokerLabel = if ($useWam) { 'WAM enabled' } else { 'WAM disabled' }
             Set-Status "Connecting to Exchange Online ($brokerLabel)…"
 
+            $loadingMsg = if ($useWam) {
+                'Connecting to Exchange Online (WAM)…'
+            }
+            else {
+                "Connecting to Exchange Online…`nA browser sign-in window will open. Complete sign-in there, then return to this app."
+            }
+            Show-Loading -Message $loadingMsg
+
             # Force the UI to repaint before Connect-ExchangeOnline takes over the thread
             # (the auth flow blocks this dispatcher and would otherwise hide the status).
             $window.Dispatcher.Invoke(
@@ -3790,10 +3893,10 @@ $($script:DlgResourcesXaml)
             if (-not $useWam) { $connectArgs['DisableWAM'] = $true }
             $null = Connect-RBACExchangeOnline @connectArgs
             Update-ConnectionUI
-            Set-Status 'Connected.' 'ok'
-            if ($script:CurrentView) { Load-ViewData -View $script:CurrentView }
+            Set-Status 'Connected. Click Refresh or pick a section in the sidebar to load data.' 'ok'
         }
         catch { Set-Status "Connect failed: $($_.Exception.Message)" 'error' }
+        finally { Hide-Loading }
     }
     function Do-Disconnect {
         try {
@@ -3809,12 +3912,30 @@ $($script:DlgResourcesXaml)
 
     # ---------------- Wire events ----------------
     $UI.BtnConnect.Add_Click({ Do-Connect })
+    $UI.BtnWamInfo.Add_Click({
+            $msg = @'
+WAM (Web Account Manager) is the Windows authentication broker used by ExchangeOnlineManagement 3.7.0+ by default.
+
+It can pop a native Windows account picker and silently reuse Microsoft Entra ID accounts already signed in on the machine.
+
+Why you might want to disable it:
+  - Connecting from a non-domain or non-Entra-joined machine
+  - WAM fails to launch its window (some RDP / Citrix sessions)
+  - You want to force a clean browser-based sign-in
+  - Authenticating with a guest / external account
+
+When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnline, falling back to the classic device-code / browser flow.
+'@
+            [System.Windows.MessageBox]::Show($msg, 'About WAM (Web Account Manager)',
+                [System.Windows.MessageBoxButton]::OK,
+                [System.Windows.MessageBoxImage]::Information) | Out-Null
+        })
     $UI.BtnDisconnect.Add_Click({ Do-Disconnect })
     $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
     $UI.BtnWrap.Add_Click({ Toggle-Wrap })
     $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
 
-    # External links in the sidebar footer — open in the user's default browser.
+    # External links in the sidebar footer - open in the user's default browser.
     $openLink = {
         param($url)
         try { Start-Process $url } catch { Set-Status "Could not open link: $($_.Exception.Message)" 'error' }

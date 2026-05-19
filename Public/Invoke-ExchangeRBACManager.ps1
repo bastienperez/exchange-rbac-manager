@@ -24,7 +24,7 @@ function Invoke-ExchangeRBACManager {
     try {
         # ExchangeOnlineManagement is declared in RequiredModules (ExchangeRBACManager.psd1)
         # so PowerShell auto-imports it when this module loads. We only need a lazy fallback
-        # if the command surface is missing — Get-Module -ListAvailable is slow (scans every
+        # if the command surface is missing - Get-Module -ListAvailable is slow (scans every
         # PSModulePath) and Import-Module -Force triggers a needless reload, so skip them.
         if (-not (Get-Command -Name Connect-ExchangeOnline -ErrorAction SilentlyContinue)) {
             $splash.Update('Loading ExchangeOnlineManagement…')

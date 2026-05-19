@@ -113,7 +113,7 @@ function Show-RBACSplash {
         $status.Text = $initialMessage
 
         # Render the hub-and-spoke logo (white-on-blue, transparent background) inline
-        # so it lives in the splash thread's STA — same approach as the main window icon.
+        # so it lives in the splash thread's STA - same approach as the main window icon.
         try {
             $sz = 40
             [double]$cx = $sz / 2.0; [double]$cy = $sz / 2.0
