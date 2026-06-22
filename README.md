@@ -12,7 +12,8 @@ Features
 --------
 
 *   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other). Reachable from Role Assignments **and** from Roles / Role Groups / Scopes (pick among the related assignments). Resolved scope **names** (not just the `CustomRecipientScope` type), an optional fan of the scope's resolved members, and export to **PNG** or a self-contained **interactive HTML** file
-*   **Eight integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, Audit Log
+*   **Nine integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, My Cmdlets, Audit Log
+*   **My Cmdlets** - lists the cmdlets the connected account can actually run in this session, with each cmdlet's specific parameters; live-filterable by name or parameter
 *   **Edit role assignments** - change the write scope (predefined / custom recipient scope picker / OU DN / clear) and the enabled flag, with a built-in cmdlet preview before any change is run
 *   **Scope membership preview** - validate a `RecipientRestrictionFilter` *before* attaching it to an assignment
 *   **Scope cross-reference** - the details panel of a scope shows every role assignment that references it (read / write / scope) so you can answer "where is this scope used?" without writing a script
@@ -20,6 +21,11 @@ Features
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
+
+What's new in 1.4.0
+-------------------
+
+*   **New "My Cmdlets" section**: a dedicated view listing the cmdlets the connected account can run in the current Exchange Online session (resolved from the session's role-scoped module), each with its specific parameters (the 15 PowerShell common parameters are stripped out). The list is local to the session, so it loads instantly and live-filters as you type - by cmdlet name or by parameter. Includes Refresh and Export CSV; click a row to see the full parameter list in the details panel.
 
 What's new in 1.3.0
 -------------------
@@ -115,8 +121,8 @@ You can also reach the Visualizer straight from a **Role**, **Role Group** or **
 
 Typically the section you open first when investigating an unexpected permission, preparing a change request, or documenting a delegation for an audit.
 
-The eight sections
-------------------
+The nine sections
+-----------------
 
 Each section wraps a specific Exchange RBAC cmdlet (or composition of cmdlets) and exposes the same toolbar pattern: live search, chip filters, *Refresh*, *Export CSV*, plus contextual actions on selected rows.
 
@@ -180,7 +186,13 @@ Type a cmdlet name (`Set-Mailbox`, `New-MailboxExportRequest`, ...) and press *E
 
 The reverse of every other section: instead of starting from a role and finding its cmdlets, you start from a cmdlet and find which role(s) would let a user run it. Indispensable when an admin reports "I get an access denied on `Set-MailboxRegionalConfiguration`" and you have to figure out which role is missing.
 
-### 8. Audit Log
+### 8. My Cmdlets
+
+When you connect to Exchange Online, EXO builds a session module that exposes only the cmdlets your RBAC roles grant you. This section lists them - one row per cmdlet, with the cmdlet's own parameters (the common parameters like `-Verbose` / `-WhatIf` are stripped so only the meaningful ones show). It answers "what can the account I'm connected as actually run?" without cross-referencing roles by hand.
+
+Because the list is local to the already-loaded session module, it loads instantly and filters live as you type - match on a cmdlet name (`mailbox`) or on a parameter (`-Identity`). Click a row to see the full parameter list in the details panel, and export the whole set to CSV.
+
+### 9. Audit Log
 
 Planned for a future release. Clicking the *Audit Log* section currently shows a "coming soon" notice. The implementation will call `Search-AdminAuditLog` over the last 7 / 30 / 90 days (limit imposed by Exchange Online) and surface recent admin changes (caller, cmdlet, target object, parameters).
 

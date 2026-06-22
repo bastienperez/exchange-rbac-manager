@@ -269,3 +269,61 @@ function Get-RBACManagementScopes {
     # unwrapping a single-element collection into a scalar.
     return ,@($displayData)
 }
+
+function Get-RBACSessionCmdlets {
+    <#
+    .SYNOPSIS
+        List the cmdlets the connected account can run in this Exchange Online session.
+    .DESCRIPTION
+        When you connect to Exchange Online, EXO generates a session module that
+        contains only the cmdlets your RBAC roles grant you. This returns each of
+        those cmdlets with its own parameters (the 15 PowerShell common/optional-common
+        parameters are removed, since they are present on every cmdlet and add noise).
+
+        The data is local to the already-loaded session module, so it is fast and
+        needs no extra Exchange Online round-trip.
+    .OUTPUTS
+        PSCustomObject with Name and Parameters (parameters '|'-joined).
+    .EXAMPLE
+        Get-RBACSessionCmdlets
+    #>
+    [CmdletBinding()]
+    param()
+
+    # Common + optional-common parameters are on every cmdlet - hide them so the
+    # Parameters column shows only the cmdlet-specific switches/arguments.
+    $common = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]](
+            [System.Management.Automation.Cmdlet]::CommonParameters +
+            [System.Management.Automation.Cmdlet]::OptionalCommonParameters
+        ),
+        [System.StringComparer]::OrdinalIgnoreCase)
+
+    # Resolve the connected session module: prefer the name reported by
+    # Get-ConnectionInformation, and also match the classic tmpEXO_* temporary
+    # module as a fallback across EXO module versions.
+    $moduleNames = @(
+        Get-ConnectionInformation -ErrorAction SilentlyContinue |
+            Where-Object { $_.ModuleName } |
+            Select-Object -ExpandProperty ModuleName -Unique
+    )
+    $moduleNames += @(Get-Module | Where-Object { $_.Name -like 'tmpEXO_*' } | ForEach-Object Name)
+    $moduleNames = @($moduleNames | Where-Object { $_ } | Select-Object -Unique)
+    if ($moduleNames.Count -eq 0) { return @() }
+
+    try {
+        $cmds = Get-Command -Module $moduleNames -CommandType Function, Cmdlet -ErrorAction SilentlyContinue
+    }
+    catch {
+        throw "Failed to enumerate session cmdlets: $($_.Exception.Message)"
+    }
+
+    $rows = foreach ($c in @($cmds | Sort-Object Name -Unique)) {
+        $params = @($c.Parameters.Keys | Where-Object { -not $common.Contains($_) })
+        [PSCustomObject]@{
+            Name       = $c.Name
+            Parameters = ($params -join ' | ')
+        }
+    }
+    return ,@($rows)
+}

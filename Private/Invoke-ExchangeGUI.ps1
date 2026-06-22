@@ -373,6 +373,7 @@ function Invoke-ExchangeGUI {
           <Border Height="1" Opacity="0.2" Background="White" Margin="14,8,14,8"/>
           <ToggleButton x:Name="NavUserRights"  Style="{StaticResource NavButton}" Content="⌕   User Rights"/>
           <ToggleButton x:Name="NavCommands"    Style="{StaticResource NavButton}" Content="⌘   Command Lookup"/>
+          <ToggleButton x:Name="NavMyCmdlets"   Style="{StaticResource NavButton}" Content="≣   My Cmdlets"/>
           <Border Height="1" Opacity="0.2" Background="White" Margin="14,8,14,8"/>
           <ToggleButton x:Name="NavVisualizer"  Style="{StaticResource NavButton}" Content="⤳   RBAC Visualizer"/>
           <ToggleButton x:Name="NavAudit"       Style="{StaticResource NavButton}" Content="◷   Audit Log"/>
@@ -771,7 +772,7 @@ function Invoke-ExchangeGUI {
     foreach ($n in @(
             'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','BtnWamInfo','VersionLabel',
             'LinkLinkedIn','LinkGitHub','LinkClidsys',
-            'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavVisualizer','NavAudit',
+            'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavMyCmdlets','NavVisualizer','NavAudit',
             'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost','ChipsHostBorder',
             'BtnFilterRow','BtnWrap','BtnAutoFit','GridModifiers',
             'ItemCount','ToolbarTools','ToolbarPrimary',
@@ -2110,6 +2111,17 @@ $($script:DlgResourcesXaml)
                 @{ Header='Description'; Path='Description'; Width='*'; MinWidth=200 }
             )
         }
+        MyCmdlets = @{
+            Crumbs = 'RBAC ▸ My Cmdlets'
+            Title  = 'My Cmdlets'
+            Desc   = 'Cmdlets the connected account can run in this session, with their parameters.'
+            Chips  = @()
+            FrozenColumns = 1
+            Columns = @(
+                @{ Header='Cmdlet';     Path='Name';       Width=320; MinWidth=200 }
+                @{ Header='Parameters'; Path='Parameters'; Width='*'; MinWidth=320 }
+            )
+        }
         Visualizer = @{
             Crumbs = 'RBAC ▸ Visualizer'
             Title  = 'RBAC Visualizer · hub-and-spoke'
@@ -2151,6 +2163,21 @@ $($script:DlgResourcesXaml)
     function Schedule-FilterApply {
         $script:FilterDebounceTimer.Stop()
         $script:FilterDebounceTimer.Start()
+    }
+
+    # Debounce the Command Lookup typeahead so each keystroke stays snappy - the
+    # match loop (and the first Get-Command warm-up) runs after a short pause
+    # instead of on every character.
+    $script:SuggestDebounceTimer = [System.Windows.Threading.DispatcherTimer]::new()
+    $script:SuggestDebounceTimer.Interval = [TimeSpan]::FromMilliseconds(120)
+    $script:SuggestDebounceTimer.Add_Tick({
+        $script:SuggestDebounceTimer.Stop()
+        Update-SuggestPopup
+    })
+
+    function Schedule-SuggestUpdate {
+        $script:SuggestDebounceTimer.Stop()
+        $script:SuggestDebounceTimer.Start()
     }
 
     function New-Brush {
@@ -2436,6 +2463,7 @@ $($script:DlgResourcesXaml)
             Scopes      = 'SCOPE'
             UserRights  = 'USER RIGHT'
             Commands    = 'ROLE'
+            MyCmdlets   = 'CMDLET'
             Audit       = 'AUDIT EVENT'
         }
         $badgeText = $badgeMap[$script:CurrentView]
@@ -3201,6 +3229,7 @@ $($script:DlgResourcesXaml)
             'Scopes'      { 'Loading management scopes…' }
             'UserRights'  { 'Loading…' }
             'Commands'    { 'Loading…' }
+            'MyCmdlets'   { 'Loading session cmdlets…' }
             'Visualizer'  { 'Loading…' }
             default       { 'Loading…' }
         }
@@ -3265,6 +3294,27 @@ $($script:DlgResourcesXaml)
                     $UI.MainGrid.ItemsSource = $null
                     $UI.ItemCount.Text = '0 items'
                     Set-Status 'Type a cmdlet (e.g. Set-Mailbox) and press Search.' 'info'
+                    # Warm the typeahead cache off the keystroke path: deferred to a
+                    # background dispatcher op so Get-Command enumerates the EXO
+                    # modules once, when idle, instead of freezing the first 2 chars.
+                    if (-not $script:CommandSuggestions) {
+                        $window.Dispatcher.BeginInvoke(
+                            [action]{ Ensure-CommandSuggestions },
+                            [System.Windows.Threading.DispatcherPriority]::Background) | Out-Null
+                    }
+                }
+                'MyCmdlets' {
+                    # Local to the connected session module - fast, no Exchange round-trip.
+                    $data = @(Get-RBACSessionCmdlets)
+                    $script:Cache.MyCmdlets = $data
+                    $UI.MainGrid.ItemsSource = $data
+                    $UI.ItemCount.Text = "$(@($data).Count) items"
+                    if (@($data).Count -gt 0) {
+                        Set-Status "$(@($data).Count) cmdlet(s) available in this session." 'ok'
+                    }
+                    else {
+                        Set-Status 'No session cmdlets found (is the Exchange Online session still active?).' 'warn'
+                    }
                 }
                 'Visualizer' {
                     if (-not (Test-RBACExchangeConnection)) {
@@ -3382,6 +3432,7 @@ $($script:DlgResourcesXaml)
             'Roles'       { $src = $script:Cache.Roles }
             'Assignments' { $src = $script:Cache.Assignments }
             'Scopes'      { $src = $script:Cache.Scopes }
+            'MyCmdlets'   { $src = $script:Cache.MyCmdlets }
             'Audit'       { $src = $script:Cache.Audit }
             'UserRights'  {
                 if (-not $q) { Set-Status 'Type a user (UPN or alias) and press Search.' 'info'; return }
@@ -3511,6 +3562,7 @@ $($script:DlgResourcesXaml)
             RoleGroups  = $UI.NavRoleGroups;  Roles       = $UI.NavRoles
             Assignments = $UI.NavAssignments; Scopes      = $UI.NavScopes
             UserRights  = $UI.NavUserRights;  Commands    = $UI.NavCommands
+            MyCmdlets   = $UI.NavMyCmdlets
             Visualizer  = $UI.NavVisualizer;  Audit       = $UI.NavAudit
         }
         foreach ($k in $btnMap.Keys) { $btnMap[$k].IsChecked = ($k -eq $View) }
@@ -3610,6 +3662,10 @@ $($script:DlgResourcesXaml)
             'Commands' {
                 $null = $list.Add((New-ActionButton -Label 'Lookup'     -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Apply-Search }))
                 $null = $list.Add((New-ActionButton -Label 'Export CSV' -Style 'ActionBtn'  -Kind 'Tool'    -OnClick { Export-CurrentView }))
+            }
+            'MyCmdlets' {
+                $null = $list.Add((New-ActionButton -Label '⟳  Refresh'  -Style 'ActionBtn' -Kind 'Tool' -OnClick { Reload-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Export-CurrentView }))
             }
             'Visualizer' {
                 $null = $list.Add((New-ActionButton -Label 'Pick assignment…' -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Pick-VizAssignment }))
@@ -5440,7 +5496,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
     $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
-                 $UI.NavUserRights,$UI.NavCommands,$UI.NavVisualizer,$UI.NavAudit)
+                 $UI.NavUserRights,$UI.NavCommands,$UI.NavMyCmdlets,$UI.NavVisualizer,$UI.NavAudit)
     foreach ($btn in $navBtns) {
         $btn.Add_PreviewMouseDown({
             param($s,$e)
@@ -5453,6 +5509,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     $UI.NavScopes.Add_Click({      Switch-View -View 'Scopes' })
     $UI.NavUserRights.Add_Click({  Switch-View -View 'UserRights' })
     $UI.NavCommands.Add_Click({    Switch-View -View 'Commands' })
+    $UI.NavMyCmdlets.Add_Click({   Switch-View -View 'MyCmdlets' })
     $UI.NavVisualizer.Add_Click({  Switch-View -View 'Visualizer' })
     $UI.NavAudit.Add_Click({
             [System.Windows.MessageBox]::Show(
@@ -5517,7 +5574,11 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
                         Select-Object -ExpandProperty Name -Unique |
                         Sort-Object
             }
-            $script:CommandSuggestions = @($list)
+            # Pre-compute the lowercase form once so the per-keystroke match loop
+            # never re-lowercases the whole list.
+            $script:CommandSuggestions = @($list | ForEach-Object {
+                [pscustomobject]@{ Name = $_; Lower = $_.ToLowerInvariant() }
+            })
         }
         catch { $script:CommandSuggestions = @() }
     }
@@ -5537,10 +5598,10 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
         $needle = $q.ToLowerInvariant()
         $starts   = [System.Collections.Generic.List[string]]::new()
         $contains = [System.Collections.Generic.List[string]]::new()
-        foreach ($name in $script:CommandSuggestions) {
-            $low = $name.ToLowerInvariant()
-            if ($low.StartsWith($needle))    { $null = $starts.Add($name) }
-            elseif ($low.Contains($needle))  { $null = $contains.Add($name) }
+        foreach ($item in $script:CommandSuggestions) {
+            $low = $item.Lower
+            if ($low.StartsWith($needle))    { $null = $starts.Add($item.Name) }
+            elseif ($low.Contains($needle))  { $null = $contains.Add($item.Name) }
             if (($starts.Count + $contains.Count) -ge 50) { break }
         }
         $matches = @($starts) + @($contains) | Select-Object -First 30
@@ -5551,7 +5612,9 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     }
 
     $UI.SearchBox.Add_TextChanged({
-        Update-SuggestPopup
+        # Debounced typeahead (Commands view) so typing never blocks on the match
+        # loop or the one-off Get-Command warm-up.
+        Schedule-SuggestUpdate
         # Real-time filtering for cache-backed views. Lookup views (UserRights, Commands)
         # need an explicit submit because the query hits Exchange Online.
         $lookupViews = @('UserRights','Commands')
