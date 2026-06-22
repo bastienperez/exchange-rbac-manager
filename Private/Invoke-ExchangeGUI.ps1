@@ -3294,14 +3294,10 @@ $($script:DlgResourcesXaml)
                     $UI.MainGrid.ItemsSource = $null
                     $UI.ItemCount.Text = '0 items'
                     Set-Status 'Type a cmdlet (e.g. Set-Mailbox) and press Search.' 'info'
-                    # Warm the typeahead cache off the keystroke path: deferred to a
-                    # background dispatcher op so Get-Command enumerates the EXO
-                    # modules once, when idle, instead of freezing the first 2 chars.
-                    if (-not $script:CommandSuggestions) {
-                        $window.Dispatcher.BeginInvoke(
-                            [action]{ Ensure-CommandSuggestions },
-                            [System.Windows.Threading.DispatcherPriority]::Background) | Out-Null
-                    }
+                    # The typeahead cache is built lazily (debounced) only while the
+                    # user is actually typing in THIS view - never eagerly on view
+                    # entry, so its Get-Command can't fire on the UI thread while the
+                    # user is in another view (which read as a freeze in User Rights).
                 }
                 'MyCmdlets' {
                     # Local to the connected session module - fast, no Exchange round-trip.
@@ -3603,9 +3599,6 @@ $($script:DlgResourcesXaml)
 
         # Action bar
         Set-Actions -Buttons (Get-ActionsForView -View $View)
-
-        # Prefetch cmdlet suggestions so the first keystroke is instant.
-        if ($View -eq 'Commands') { Ensure-CommandSuggestions }
 
         Load-ViewData -View $View
     }
@@ -5612,9 +5605,15 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     }
 
     $UI.SearchBox.Add_TextChanged({
-        # Debounced typeahead (Commands view) so typing never blocks on the match
-        # loop or the one-off Get-Command warm-up.
-        Schedule-SuggestUpdate
+        # Typeahead only exists in Command Lookup - debounce its (lazy) build there
+        # and do NOTHING on every other view's keystrokes (User Rights included), so
+        # typing can never trigger a process before the explicit Lookup/Enter.
+        if ($script:CurrentView -eq 'Commands') {
+            Schedule-SuggestUpdate
+        }
+        elseif ($UI.SuggestPopup -and $UI.SuggestPopup.IsOpen) {
+            $UI.SuggestPopup.IsOpen = $false
+        }
         # Real-time filtering for cache-backed views. Lookup views (UserRights, Commands)
         # need an explicit submit because the query hits Exchange Online.
         $lookupViews = @('UserRights','Commands')
