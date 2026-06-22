@@ -408,6 +408,7 @@ function Invoke-ExchangeGUI {
         <RowDefinition Height="Auto"/>  <!-- Toolbar -->
         <RowDefinition Height="Auto"/>  <!-- Filter chips row (collapses when no chips) -->
         <RowDefinition Height="*"/>     <!-- Content + floating action bar overlay -->
+        <RowDefinition Height="Auto"/>  <!-- Activity log drawer -->
         <RowDefinition Height="Auto"/>  <!-- Status bar -->
       </Grid.RowDefinitions>
 
@@ -653,8 +654,26 @@ function Invoke-ExchangeGUI {
         </StackPanel>
       </Border>
 
+      <!-- Activity log: collapsed drawer sitting just above the status bar. -->
+      <Expander x:Name="LogDrawer" Grid.Row="4" IsExpanded="False"
+                Background="{StaticResource ToolbarBg}" BorderBrush="{StaticResource BorderC}"
+                BorderThickness="0,1,0,0" Padding="16,2">
+        <Expander.Header>
+          <StackPanel Orientation="Horizontal">
+            <TextBlock Text="ACTIVITY LOG" FontFamily="Consolas" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
+            <TextBlock x:Name="LogCount" Text="" FontFamily="Consolas" FontSize="11" Foreground="#A19F9D" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            <Button x:Name="BtnLogClear"  Content="Clear"   Margin="12,0,0,0" Padding="9,2" FontSize="11" Cursor="Hand"/>
+            <Button x:Name="BtnLogExport" Content="Export…" Margin="6,0,0,0"  Padding="9,2" FontSize="11" Cursor="Hand"/>
+          </StackPanel>
+        </Expander.Header>
+        <TextBox x:Name="TxtLog" IsReadOnly="True" Height="150" VerticalScrollBarVisibility="Auto"
+                 HorizontalScrollBarVisibility="Auto" FontFamily="Consolas" FontSize="11.5"
+                 TextWrapping="NoWrap" Background="White" Foreground="#3A3A3A" BorderThickness="0"
+                 Margin="0,4,0,6"/>
+      </Expander>
+
       <!-- Status bar -->
-      <Border Grid.Row="4" Background="{StaticResource StatusBg}"
+      <Border Grid.Row="5" Background="{StaticResource StatusBg}"
               BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,0"
               Padding="0,8">
         <Grid MinHeight="48">
@@ -760,7 +779,8 @@ function Invoke-ExchangeGUI {
             'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose',
             'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive',
             'LoadingOverlay','LoadingText',
-            'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion'
+            'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion',
+            'LogDrawer','TxtLog','LogCount','BtnLogClear','BtnLogExport'
         )) { $UI[$n] = $window.FindName($n) }
 
     # Wire the suggestion Popup's PlacementTarget in code: doing it via a XAML
@@ -775,6 +795,42 @@ function Invoke-ExchangeGUI {
     $script:CurrentChips  = @()        # chip labels for the current view
     $script:VizAssignment = $null      # currently visualized assignment
 
+    # Scope members resolved for the current assignment's write scope, drawn as a
+    # fan of nodes off the Scope spoke. Null = not resolved yet (button not clicked).
+    $script:VizScopeMembers   = $null
+    $script:VizScopeInfo      = $null   # the resolved Get-ManagementScope object
+    $script:VizScopeTruncated = $false  # preview hit the cap below
+    $script:VizScopeCap       = 60      # members drawn on the canvas at most
+    # Cache of resolved custom-scope names keyed "<assignmentName>|Write|Read".
+    # The bulk Get-ManagementRoleAssignment often returns CustomRecipient*Scope /
+    # *ScopeDetails EMPTY (e.g. AutoManaged-* assignments); the name only comes
+    # through when the assignment is re-queried by identity, so we do that once
+    # and remember it rather than re-fetching on every render.
+    $script:VizScopeNameCache = @{}
+    # Cached management-scope catalog (Name + flattened Filter + Root) used to
+    # cross-reference an assignment to its scope name when the assignment object
+    # exposes neither the name nor a usable *ScopeDetails.Name.
+    $script:VizScopeCatalog = $null
+
+    # Shared cmdlet verb -> group classification + colour palette. Defined once at
+    # script scope so the WPF visualizer render AND the interactive HTML export
+    # colour-code cmdlets identically.
+    $script:VizVerbPalettes = @{
+        Read        = @{ Bg='#C5E1A5'; Border='#558B2F'; Fg='#33691E' } # green
+        Modify      = @{ Bg='#FFE082'; Border='#B28704'; Fg='#5C3A00' } # amber
+        Destructive = @{ Bg='#FFCDD2'; Border='#A4262C'; Fg='#7A1A1F' } # red
+        Create      = @{ Bg='#BBDEFB'; Border='#0078D4'; Fg='#0B4A78' } # blue
+        Other       = @{ Bg='#E1BEE7'; Border='#6A1B9A'; Fg='#3F0C57' } # purple
+    }
+    $script:VizVerbToGroup = @{
+        'Get' = 'Read'; 'Find' = 'Read'; 'Search' = 'Read'; 'Test' = 'Read'; 'Measure' = 'Read'
+        'Set' = 'Modify'; 'Update' = 'Modify'; 'Edit' = 'Modify'; 'Sync' = 'Modify'
+        'Remove' = 'Destructive'; 'Disable' = 'Destructive'; 'Stop' = 'Destructive'; 'Clear' = 'Destructive'
+        'New' = 'Create'; 'Add' = 'Create'; 'Enable' = 'Create'; 'Start' = 'Create'; 'Install' = 'Create'
+    }
+    $script:VizGroupOrder    = @{ Read=0; Modify=1; Destructive=2; Create=3; Other=4 }
+    $script:VizMemberPalette = @{ Bg='#EAF3FB'; Border='#2B88D8'; Fg='#0B4A78' } # scope members
+
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
     $modVer = Get-RBACModuleVersion
     $verStr = if ($modVer) { "v$($modVer.ToString())" } else { 'v?' }
@@ -783,6 +839,31 @@ function Invoke-ExchangeGUI {
     $exoVer = (Get-Module -Name 'ExchangeOnlineManagement' -ListAvailable |
                Sort-Object Version -Descending | Select-Object -First 1).Version
     $UI.StatusVersion.Text = if ($exoVer) { "ExchangeOnlineManagement v$exoVer" } else { 'ExchangeOnlineManagement n/a' }
+
+    # ---------------- Activity log ----------------
+    # Per-session log file (best-effort) mirroring the on-screen Activity log drawer.
+    $script:GuiLogFile  = Join-Path $env:TEMP ("ExchangeRBACManager-{0}.log" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    $script:GuiLogCount = 0
+
+    function Write-GuiLog {
+        param([string]$Message, [ValidateSet('INFO','OK','WARN','ERROR')]$Tag = 'INFO')
+        if (-not $UI.TxtLog) { return }
+        # Pad the tag so messages line up in the monospaced drawer (longest tag = ERROR).
+        $line = "$(Get-Date -Format 'HH:mm:ss') [$($Tag.PadRight(5))] $Message"
+        $UI.TxtLog.AppendText("$line`r`n")
+        $UI.TxtLog.ScrollToEnd()
+        $script:GuiLogCount++
+        if ($UI.LogCount) { $UI.LogCount.Text = "($script:GuiLogCount)" }
+        # Surface problems automatically: pop the drawer open on the first error so
+        # the user actually sees what went wrong without hunting for it.
+        if ($Tag -eq 'ERROR' -and $UI.LogDrawer -and -not $UI.LogDrawer.IsExpanded) {
+            $UI.LogDrawer.IsExpanded = $true
+        }
+        # Persist to the per-session file; never let logging break the UI.
+        if ($script:GuiLogFile) {
+            try { Add-Content -LiteralPath $script:GuiLogFile -Value $line -Encoding UTF8 -ErrorAction Stop } catch { }
+        }
+    }
 
     # ---------------- Status helpers ----------------
     function Set-Status {
@@ -806,6 +887,9 @@ function Invoke-ExchangeGUI {
                 $UI.StatusText.Foreground = '#201F1E'
             }
         }
+        # Mirror every status message into the Activity log drawer.
+        $tag = switch ($Level) { 'error' { 'ERROR' } 'warn' { 'WARN' } 'ok' { 'OK' } default { 'INFO' } }
+        Write-GuiLog -Message $Message -Tag $tag
     }
 
     function Update-ConnectionUI {
@@ -1877,7 +1961,32 @@ $($script:DlgResourcesXaml)
 
         # User chose Run: execute the live action.
         try {
-            & $RunBlock
+            $runResult = & $RunBlock
+
+            # The RBAC write helpers (Invoke-RBACWrite) catch Exchange errors
+            # internally and RETURN a result object (@{ Executed; Error }) rather
+            # than throwing - so a failed live action would otherwise be reported
+            # as a false success. Inspect the returned object(s) and surface the
+            # real error instead of the success message.
+            $failed = @($runResult) | Where-Object {
+                $_ -and $_.PSObject.Properties.Match('Error').Count -gt 0 -and $_.Error
+            }
+            if ($failed.Count -gt 0) {
+                $msg = "$($failed[0].Error.Exception.Message)"
+                if (-not $msg) { $msg = "$($failed[0].Error)" }
+                Set-Status "Error: $msg" 'error'
+                return $false
+            }
+            # Some helpers flag an action that did not run (Executed = $false)
+            # without an Error object; treat that as a failure too.
+            $notRun = @($runResult) | Where-Object {
+                $_ -and $_.PSObject.Properties.Match('Executed').Count -gt 0 -and -not $_.Executed
+            }
+            if ($notRun.Count -gt 0) {
+                Set-Status 'The action did not complete - nothing was changed.' 'error'
+                return $false
+            }
+
             Set-Status $SuccessMsg 'ok'
             return $true
         }
@@ -2488,51 +2597,30 @@ $($script:DlgResourcesXaml)
         $cx = $baseW / 2; $cy = $baseH / 2
         $hubR = 70
 
-        # -- Fetch ALL cmdlets ---------------------------------------------
-        $allEntries = @()
-        try {
-            $allEntries = @(Get-ManagementRoleEntry "$($a.Role)\*" -ErrorAction Stop)
-        } catch { $allEntries = @() }
+        # -- Fetch + classify the role's cmdlets ---------------------------
+        # Same-verb cmdlets are placed contiguously around the role node and
+        # share a colour palette so the diagram instantly conveys "this role
+        # grants 5 reads, 3 writes, 1 delete". The classification/sort lives in
+        # Get-VizClassifiedEntries so the HTML export reuses it verbatim.
+        $verbPalettes = $script:VizVerbPalettes
+        $allEntries   = Get-VizClassifiedEntries -Role $a.Role
 
-        # -- Group cmdlets by verb (read / modify / destructive / create / other)
-        # Verb is the part before the first dash. Same-verb cmdlets are placed
-        # contiguously around the role node and share a colour palette so the
-        # diagram instantly conveys "this role grants 5 reads, 3 writes, 1 delete".
-        $verbPalettes = @{
-            Read        = @{ Bg='#C5E1A5'; Border='#558B2F'; Fg='#33691E' } # green
-            Modify      = @{ Bg='#FFE082'; Border='#B28704'; Fg='#5C3A00' } # amber
-            Destructive = @{ Bg='#FFCDD2'; Border='#A4262C'; Fg='#7A1A1F' } # red
-            Create      = @{ Bg='#BBDEFB'; Border='#0078D4'; Fg='#0B4A78' } # blue
-            Other       = @{ Bg='#E1BEE7'; Border='#6A1B9A'; Fg='#3F0C57' } # purple
+        # Scope display: prefer the custom scope *name* (e.g. "Sales recipients")
+        # over the bare RecipientWriteScope type ("CustomRecipientScope") or the
+        # pre-formatted "Custom: <name> (Filter: <opath>)" string, which is too
+        # noisy to read on a node.
+        $writeScopeName = Get-VizScopeDisplay -Assignment $a -Which Write
+        $readScopeName  = Get-VizScopeDisplay -Assignment $a -Which Read
+        $scopeSub = "Read: $readScopeName"
+        if ($null -ne $script:VizScopeMembers) {
+            $mCount   = @($script:VizScopeMembers).Count
+            $scopeSub = "Read: $readScopeName`n$mCount member$(if ($mCount -eq 1) { '' } else { 's' })$(if ($script:VizScopeTruncated) { '+' } else { '' })"
         }
-        $verbToGroup = @{
-            'Get' = 'Read'; 'Find' = 'Read'; 'Search' = 'Read'; 'Test' = 'Read'; 'Measure' = 'Read'
-            'Set' = 'Modify'; 'Update' = 'Modify'; 'Edit' = 'Modify'; 'Sync' = 'Modify'
-            'Remove' = 'Destructive'; 'Disable' = 'Destructive'; 'Stop' = 'Destructive'; 'Clear' = 'Destructive'
-            'New' = 'Create'; 'Add' = 'Create'; 'Enable' = 'Create'; 'Start' = 'Create'; 'Install' = 'Create'
-        }
-        # Per-entry classification + ordering: group, then verb, then full name.
-        $groupOrder = @{ Read=0; Modify=1; Destructive=2; Create=3; Other=4 }
-        foreach ($e in $allEntries) {
-            $rawName = "$($e.Name)"
-            $shortName = ($rawName -split '\\')[-1]
-            $verb      = ($shortName -split '-', 2)[0]
-            $grp       = $verbToGroup[$verb]
-            if (-not $grp) { $grp = 'Other' }
-            $e | Add-Member -NotePropertyName 'CmdletVerb'       -NotePropertyValue $verb               -Force
-            $e | Add-Member -NotePropertyName 'CmdletGroup'      -NotePropertyValue $grp                -Force
-            $e | Add-Member -NotePropertyName 'CmdletGroupOrder' -NotePropertyValue $groupOrder[$grp]   -Force
-            $e | Add-Member -NotePropertyName 'CmdletShortName'  -NotePropertyValue $shortName          -Force
-        }
-        # Sort on plain string/int properties - scriptblock expressions can lose
-        # access to the enclosing scope in some hosts and produce a junk ordering
-        # (which surfaced as a misplaced empty node on the canvas).
-        $allEntries = @($allEntries | Sort-Object CmdletGroupOrder, CmdletVerb, CmdletShortName)
 
         $spokes = @(
-            @{ Label='What · Role';     Name=$a.Role;                Sub='';                       Bg='#DFF6DD'; X=$cx - 280; Y=$cy - 200 }
-            @{ Label='Who · Assignee';  Name=$a.RoleAssignee;        Sub=$a.RoleAssigneeType;       Bg='#FFF4CE'; X=$cx + 100; Y=$cy - 200 }
-            @{ Label='Where · Scope';   Name=$a.RecipientWriteScope; Sub=$a.RecipientReadScope;     Bg='#FCE4E4'; X=$cx - 100; Y=$cy + 130 }
+            @{ Label='What · Role';     Name=$a.Role;          Sub='';              Bg='#DFF6DD'; X=$cx - 280; Y=$cy - 200 }
+            @{ Label='Who · Assignee';  Name=$a.RoleAssignee;  Sub=$a.RoleAssigneeType; Bg='#FFF4CE'; X=$cx + 100; Y=$cy - 200 }
+            @{ Label='Where · Scope';   Name=$writeScopeName;  Sub=$scopeSub;       Bg='#FCE4E4'; X=$cx - 100; Y=$cy + 130 }
         )
 
         # -- Role node centre for cmdlet fan ------------------------------
@@ -2590,6 +2678,46 @@ $($script:DlgResourcesXaml)
             $bounds.maxX = [Math]::Max($bounds.maxX, $s.X + 200)
             $bounds.minY = [Math]::Min($bounds.minY, $s.Y)
             $bounds.maxY = [Math]::Max($bounds.maxY, $s.Y + 60)
+        }
+
+        # -- Scope member positioning (only when the user resolved them) ----
+        # Members fan out around the Scope spoke the same way cmdlets fan around
+        # the Role node: rings of nodes pointing away from the hub.
+        $scopeS   = $spokes[2]
+        $scopeNcX = $scopeS.X + $nodeW / 2
+        $scopeNcY = $scopeS.Y + $nodeH / 2
+        $svx = $scopeNcX - $cx; $svy = $scopeNcY - $cy
+        $svlen = [Math]::Sqrt($svx * $svx + $svy * $svy)
+        if ($svlen -gt 0) { $svx /= $svlen; $svy /= $svlen }
+        $scopeBaseAngle = [Math]::Atan2($svy, $svx)
+
+        $memberNodeW    = 150
+        $memberNodeH    = 22
+        $memBaseRadius  = 130
+        $memRingSpacing = 60
+        $memItemsPerRing = 12
+        $memberPositions = [System.Collections.Generic.List[hashtable]]::new()
+        # Filter out nulls: @($null) yields a 1-element array holding $null, which
+        # would otherwise draw a single empty "phantom" member node before the user
+        # has resolved any members.
+        $members = @($script:VizScopeMembers | Where-Object { $null -ne $_ })
+        for ($i = 0; $i -lt $members.Count; $i++) {
+            $ring      = [int]($i / $memItemsPerRing)
+            $posInRing = $i % $memItemsPerRing
+            $radius    = $memBaseRadius + $ring * $memRingSpacing
+            $angle     = $scopeBaseAngle + 2 * [Math]::PI * $posInRing / $memItemsPerRing
+
+            $ncX = $scopeNcX + $radius * [Math]::Cos($angle)
+            $ncY = $scopeNcY + $radius * [Math]::Sin($angle)
+            $x   = $ncX - $memberNodeW / 2
+            $y   = $ncY - $memberNodeH / 2
+
+            $null = $memberPositions.Add(@{ X = $x; Y = $y; NcX = $ncX; NcY = $ncY; Angle = $angle; Ring = $ring })
+
+            $bounds.minX = [Math]::Min($bounds.minX, $x)
+            $bounds.maxX = [Math]::Max($bounds.maxX, $x + $memberNodeW)
+            $bounds.minY = [Math]::Min($bounds.minY, $y)
+            $bounds.maxY = [Math]::Max($bounds.maxY, $y + $memberNodeH)
         }
 
         # -- Canvas size = bounding box + padding --------------------------
@@ -2734,6 +2862,23 @@ $($script:DlgResourcesXaml)
             $null = $cmdletArrows.Add($arrow)
         }
 
+        # -- Edges: scope node → member nodes (stored too) ----------------
+        $memberLines  = [System.Collections.Generic.List[System.Windows.Shapes.Line]]::new()
+        $memberArrows = [System.Collections.Generic.List[System.Windows.Shapes.Polygon]]::new()
+        for ($i = 0; $i -lt $memberPositions.Count; $i++) {
+            $pos  = $memberPositions[$i]
+            $line = [System.Windows.Shapes.Line]::new()
+            $line.X1 = $scopeNcX + $offsetX; $line.Y1 = $scopeNcY + $offsetY
+            $line.X2 = $pos.NcX  + $offsetX; $line.Y2 = $pos.NcY  + $offsetY
+            $line.Stroke          = $script:VizMemberPalette.Border
+            $line.StrokeThickness = 1.0
+            $line.StrokeDashArray = $dashes
+            $null = $cv.Children.Add($line)
+            $arrow = & $addArrow $cv ($pos.NcX + $offsetX) ($pos.NcY + $offsetY) $pos.Angle $script:VizMemberPalette.Border
+            $null = $memberLines.Add($line)
+            $null = $memberArrows.Add($arrow)
+        }
+
         # -- Hub -----------------------------------------------------------
         $hub = [System.Windows.Controls.Border]::new()
         $hub.Width = $hubR * 2; $hub.Height = $hubR * 2
@@ -2812,6 +2957,18 @@ $($script:DlgResourcesXaml)
                     })
                 }
             }
+            # The Scope spoke (index 2) anchors the START of every member line + its arrow.
+            if ($si -eq 2) {
+                for ($mi = 0; $mi -lt $memberLines.Count; $mi++) {
+                    $null = $links.Add(@{
+                        Line    = $memberLines[$mi]
+                        End     = 'start'
+                        OffsetX = $nodeW / 2
+                        OffsetY = $nodeH / 2
+                        Arrow   = $memberArrows[$mi]
+                    })
+                }
+            }
             & $makeDraggable $node $links
         }
 
@@ -2847,8 +3004,40 @@ $($script:DlgResourcesXaml)
             & $makeDraggable $node $links
         }
 
-        # -- Legend (only if there are cmdlets to colour-code) -------------
-        if ($allEntries.Count -gt 0) {
+        # -- Scope member nodes --------------------------------------------
+        $memPal = $script:VizMemberPalette
+        for ($i = 0; $i -lt $members.Count; $i++) {
+            $pos  = $memberPositions[$i]
+            $m    = $members[$i]
+            $node = [System.Windows.Controls.Border]::new()
+            $node.Width        = $memberNodeW
+            $node.CornerRadius = '3'
+            $node.Background   = $memPal.Bg
+            $node.BorderBrush  = $memPal.Border
+            $node.BorderThickness = 1
+            $node.Padding      = '5,2'
+            $tb = [System.Windows.Controls.TextBlock]::new()
+            $tb.Text         = if ($m.Name) { "$($m.Name)" } else { "$($m.PrimarySmtpAddress)" }
+            $tb.FontSize     = 9; $tb.FontWeight = 'SemiBold'
+            $tb.TextTrimming = 'CharacterEllipsis'; $tb.Foreground = $memPal.Fg
+            $tb.ToolTip      = "$($m.Name)`n$($m.PrimarySmtpAddress)`n$($m.RecipientTypeDetails)"
+            $node.Child = $tb
+            [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX)
+            [System.Windows.Controls.Canvas]::SetTop($node,  $pos.Y + $offsetY)
+            $null = $cv.Children.Add($node)
+            $links = [System.Collections.Generic.List[hashtable]]::new()
+            $null = $links.Add(@{
+                Line    = $memberLines[$i]
+                End     = 'end'
+                OffsetX = $memberNodeW / 2
+                OffsetY = $memberNodeH / 2
+                Arrow   = $memberArrows[$i]
+            })
+            & $makeDraggable $node $links
+        }
+
+        # -- Legend (when there are cmdlets and/or scope members to colour-code)
+        if ($allEntries.Count -gt 0 -or $members.Count -gt 0) {
             # Count cmdlets per group to drive the legend labels.
             $groupCounts = @{}
             foreach ($e in $allEntries) {
@@ -2864,7 +3053,8 @@ $($script:DlgResourcesXaml)
             $legendPanel = [System.Windows.Controls.StackPanel]::new()
             $legendPanel.Orientation = 'Horizontal'
             $title = [System.Windows.Controls.TextBlock]::new()
-            $title.Text = 'CMDLETS BY GROUP'; $title.FontFamily = 'Consolas'; $title.FontSize = 9
+            $title.Text = if ($allEntries.Count -gt 0) { 'CMDLETS BY GROUP' } else { 'LEGEND' }
+            $title.FontFamily = 'Consolas'; $title.FontSize = 9
             $title.Foreground = '#605E5C'; $title.VerticalAlignment = 'Center'; $title.Margin = '0,0,10,0'
             $null = $legendPanel.Children.Add($title)
             $orderedGroups = @('Read','Modify','Destructive','Create','Other')
@@ -2881,6 +3071,18 @@ $($script:DlgResourcesXaml)
                 $lbl.Text = "$g ($($groupCounts[$g]))"
                 $lbl.FontSize = 11; $lbl.Foreground = '#201F1E'
                 $lbl.VerticalAlignment = 'Center'
+                $null = $legendPanel.Children.Add($lbl)
+            }
+            # Append a scope-members swatch when members are drawn on the canvas.
+            if ($members.Count -gt 0) {
+                $sw = [System.Windows.Shapes.Rectangle]::new()
+                $sw.Width = 12; $sw.Height = 12
+                $sw.Fill = $memPal.Bg; $sw.Stroke = $memPal.Border; $sw.StrokeThickness = 1
+                $sw.Margin = '12,0,4,0'; $sw.VerticalAlignment = 'Center'
+                $null = $legendPanel.Children.Add($sw)
+                $lbl = [System.Windows.Controls.TextBlock]::new()
+                $lbl.Text = "Scope members ($($members.Count)$(if ($script:VizScopeTruncated) { '+' } else { '' }))"
+                $lbl.FontSize = 11; $lbl.Foreground = '#201F1E'; $lbl.VerticalAlignment = 'Center'
                 $null = $legendPanel.Children.Add($lbl)
             }
             $legend.Child = $legendPanel
@@ -3299,6 +3501,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'       -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Edit'             -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditRoleGroup }))
                 $null = $list.Add((New-ActionButton -Label 'Copy'             -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-CopyRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize'    -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Related }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'       -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteRoleGroup }))
             }
             'Roles' {
@@ -3307,6 +3510,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'  -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Edit'        -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditRole }))
                 $null = $list.Add((New-ActionButton -Label 'Copy'        -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-CopyRole }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'BtnDark'  -Kind 'Selection'   -OnClick { Visualize-Related }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'  -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteRole }))
             }
             'Assignments' {
@@ -3323,6 +3527,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Edit'            -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditScope }))
                 $null = $list.Add((New-ActionButton -Label 'Preview members' -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Preview-ScopeMembers }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize'    -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Related }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'      -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteScope }))
             }
             'UserRights' {
@@ -3339,7 +3544,9 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label '➕ Zoom in'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz 1.2 }))
                 $null = $list.Add((New-ActionButton -Label '➖ Zoom out' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz (1 / 1.2) }))
                 $null = $list.Add((New-ActionButton -Label '⌖ Center'   -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Reset-VizTransform; Render-Visualizer }))
-                $null = $list.Add((New-ActionButton -Label 'Export PNG' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizPng }))
+                $null = $list.Add((New-ActionButton -Label '👥 Scope members' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Show-VizScopeMembers }))
+                $null = $list.Add((New-ActionButton -Label 'Export PNG'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizPng }))
+                $null = $list.Add((New-ActionButton -Label 'Export HTML' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizHtml }))
             }
             'Audit' {
                 $null = $list.Add((New-ActionButton -Label '⟳ 7 days'   -Style 'ActionBtn' -Kind 'Tool' -OnClick { Load-Audit -Days 7 }))
@@ -4082,13 +4289,108 @@ $($script:DlgResourcesXaml)
             Set-Status 'Selected row is not an assignment.' 'warn'; return
         }
         $script:VizAssignment = $a
+        Reset-VizScopeMembers   # different assignment -> drop the previous scope fan
         Switch-View -View 'Visualizer'
     }
 
+    # Find the role assignments related to a Roles / Role Groups / Scopes row.
+    # A role / role group / scope can back several assignments, so this is what
+    # lets those views reach the (single-assignment) Visualizer.
+    function Get-VizRelatedAssignments {
+        param([string]$View, $Selected)
+        if (-not $script:Cache.Assignments) {
+            try { $script:Cache.Assignments = @(Get-RBACRoleAssignments) } catch { $script:Cache.Assignments = @() }
+        }
+        $all  = @($script:Cache.Assignments)
+        $name = "$($Selected.Name)".Trim()
+        if (-not $name) { return @() }
+
+        switch ($View) {
+            'Roles' {
+                return @($all | Where-Object { "$($_.Role)" -eq $name })
+            }
+            'RoleGroups' {
+                return @($all | Where-Object {
+                    "$($_.RoleAssigneeType)" -eq 'RoleGroup' -and "$($_.RoleAssignee)" -eq $name
+                })
+            }
+            'Scopes' {
+                # Direct references first (custom scope name or the resolved enum).
+                $related = @($all | Where-Object {
+                    "$($_.CustomRecipientReadScope)"  -eq $name -or
+                    "$($_.CustomRecipientWriteScope)" -eq $name -or
+                    "$($_.RecipientReadScope)"        -like "*$name*" -or
+                    "$($_.RecipientWriteScope)"       -like "*$name*"
+                })
+                # Augment with AutoManaged-style assignments that don't expose the
+                # scope name, via a direct reverse lookup for THIS scope (one call,
+                # cheaper than building the full scope map).
+                if (Test-RBACExchangeConnection) {
+                    try {
+                        $governed = @(Get-ManagementRoleAssignment -CustomRecipientWriteScope $name -ErrorAction Stop |
+                            ForEach-Object { "$($_.Name)" })
+                        if ($governed.Count -gt 0) {
+                            $have = @{}; foreach ($r in $related) { $have["$($r.Name)"] = $true }
+                            foreach ($a in $all) {
+                                if (($governed -contains "$($a.Name)") -and -not $have.ContainsKey("$($a.Name)")) {
+                                    $related += $a
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                return @($related)
+            }
+        }
+        return @()
+    }
+
+    # "Visualize" from Roles / Role Groups / Scopes: resolve the related
+    # assignments, then go straight to the graph (1 match) or let the user pick
+    # (several matches). Pre-filtered picker reuses Pick-VizAssignment.
+    function Visualize-Related {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a row first.' 'warn'; return }
+        $raw  = if ($sel._raw) { $sel._raw } else { $sel }
+        $view = $script:CurrentView
+        $label = switch ($view) { 'Roles' { 'role' } 'RoleGroups' { 'role group' } 'Scopes' { 'scope' } default { 'item' } }
+        $name = "$($raw.Name)"
+
+        $related = @(Get-VizRelatedAssignments -View $view -Selected $raw)
+        if ($related.Count -eq 0) {
+            Set-Status "No role assignment references $label '$name'." 'warn'
+            return
+        }
+        if ($related.Count -eq 1) {
+            $script:VizAssignment = $related[0]
+            Reset-VizScopeMembers
+            Switch-View -View 'Visualizer'
+            Set-Status "Visualizing $($related[0].Name)." 'ok'
+            return
+        }
+        # Several assignments back this row - let the user choose.
+        Pick-VizAssignment -Assignments $related `
+            -Title "Assignments using $label '$name'" `
+            -Subtitle "$($related.Count) assignments reference this $label. Pick one to visualize as a hub-and-spoke graph."
+    }
+
     function Pick-VizAssignment {
-        if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
-        $assignments = @($script:Cache.Assignments)
-        if ($assignments.Count -eq 0) { Set-Status 'No assignments loaded.' 'warn'; return }
+        param(
+            [array]$Assignments,
+            [string]$Title    = 'Pick a role assignment',
+            [string]$Subtitle = 'Choose the assignment to visualize as a hub-and-spoke graph.'
+        )
+        # Without an explicit list, offer every assignment (the toolbar "Pick
+        # assignment…" entry point). Callers from the Roles/Role Groups/Scopes
+        # views pass a pre-filtered list of the assignments related to their row.
+        if (-not $PSBoundParameters.ContainsKey('Assignments')) {
+            if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
+            $Assignments = @($script:Cache.Assignments)
+        }
+        $assignments = @($Assignments)
+        if ($assignments.Count -eq 0) { Set-Status 'No assignments to pick from.' 'warn'; return }
 
         $rows = foreach ($a in $assignments) {
             [PSCustomObject]@{
@@ -4116,9 +4418,9 @@ $($script:DlgResourcesXaml)
 
     <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
       <StackPanel>
-        <TextBlock Text="Pick a role assignment" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
-        <TextBlock Text="Choose the assignment to visualize as a hub-and-spoke graph."
-                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+        <TextBlock x:Name="DlgTitle" Text="Pick a role assignment" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock x:Name="DlgSubtitle" Text="Choose the assignment to visualize as a hub-and-spoke graph."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
@@ -4176,10 +4478,41 @@ $($script:DlgResourcesXaml)
         $countText = $dlg.FindName('CountText')
         $btnOK     = $dlg.FindName('BtnOK')
         $btnCancel = $dlg.FindName('BtnCancel')
+        $dlgTitle  = $dlg.FindName('DlgTitle')
+        $dlgSub    = $dlg.FindName('DlgSubtitle')
+        if ($dlgTitle) { $dlgTitle.Text = $Title }
+        if ($dlgSub)   { $dlgSub.Text   = $Subtitle }
 
         $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView($rows)
         $list.ItemsSource = $rows
         $countText.Text   = "$($rows.Count) items"
+
+        # Click a GridView column header to sort by that column (toggle asc/desc).
+        # WPF's GridView doesn't sort on its own, so wire it up against the same
+        # default view (sorting composes with the search filter above). The header
+        # text equals the bound property name (Name/Role/Assignee/Scope).
+        $sortState = @{ Property = $null; Ascending = $true }
+        $list.AddHandler(
+            [System.Windows.Controls.GridViewColumnHeader]::ClickEvent,
+            [System.Windows.RoutedEventHandler]{
+                param($s, $e)
+                $header = $e.OriginalSource -as [System.Windows.Controls.GridViewColumnHeader]
+                if (-not $header -or $null -eq $header.Column) { return }
+                $prop = "$($header.Content)".Trim()
+                if (-not $prop) { return }
+                if ($sortState.Property -eq $prop) { $sortState.Ascending = -not $sortState.Ascending }
+                else { $sortState.Property = $prop; $sortState.Ascending = $true }
+                $dir = if ($sortState.Ascending) {
+                    [System.ComponentModel.ListSortDirection]::Ascending
+                } else {
+                    [System.ComponentModel.ListSortDirection]::Descending
+                }
+                $view.SortDescriptions.Clear()
+                $view.SortDescriptions.Add(
+                    [System.ComponentModel.SortDescription]::new($prop, $dir))
+                $view.Refresh()
+            }
+        )
 
         $applyFilter = {
             $needle = ([string]$filterBox.Text).Trim().ToLowerInvariant()
@@ -4215,7 +4548,11 @@ $($script:DlgResourcesXaml)
 
         if ($dlg.ShowDialog() -eq $true -and $list.SelectedItem) {
             $script:VizAssignment = $list.SelectedItem._raw
-            Render-Visualizer
+            Reset-VizScopeMembers   # different assignment -> drop the previous scope fan
+            # Re-render in place when already on the Visualizer; otherwise switch
+            # to it (Switch-View paints the canvas itself).
+            if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer }
+            else { Switch-View -View 'Visualizer' }
             Set-Status "Visualizing $($list.SelectedItem.Name)." 'ok'
         }
     }
@@ -4237,6 +4574,644 @@ $($script:DlgResourcesXaml)
             Set-Status "Exported to $($dlg.FileName)." 'ok'
         }
         catch { Set-Status "Export failed: $($_.Exception.Message)" 'error' }
+    }
+
+    # ---------------- Visualizer: shared helpers ----------------
+    function Reset-VizScopeMembers {
+        $script:VizScopeMembers   = $null
+        $script:VizScopeInfo      = $null
+        $script:VizScopeTruncated = $false
+    }
+
+    # Fetch a role's cmdlets and tag each with its verb group/colour bucket,
+    # sorted group -> verb -> name. Shared by the WPF render and the HTML export
+    # so both colour-code identically.
+    function Get-VizClassifiedEntries {
+        param([string]$Role)
+        $entries = @()
+        try { $entries = @(Get-ManagementRoleEntry "$Role\*" -ErrorAction Stop) } catch { $entries = @() }
+        foreach ($e in $entries) {
+            $shortName = ("$($e.Name)" -split '\\')[-1]
+            $verb      = ($shortName -split '-', 2)[0]
+            $grp       = $script:VizVerbToGroup[$verb]
+            if (-not $grp) { $grp = 'Other' }
+            $e | Add-Member -NotePropertyName 'CmdletVerb'       -NotePropertyValue $verb                       -Force
+            $e | Add-Member -NotePropertyName 'CmdletGroup'      -NotePropertyValue $grp                        -Force
+            $e | Add-Member -NotePropertyName 'CmdletGroupOrder' -NotePropertyValue $script:VizGroupOrder[$grp] -Force
+            $e | Add-Member -NotePropertyName 'CmdletShortName'  -NotePropertyValue $shortName                  -Force
+        }
+        # Sort on plain string/int properties (scriptblock sort keys can lose the
+        # enclosing scope in some hosts and produce a junk ordering).
+        return @($entries | Sort-Object CmdletGroupOrder, CmdletVerb, CmdletShortName)
+    }
+
+    # Best available *name* for an assignment's write/read scope. Custom scopes
+    # normally expose the name via CustomRecipient*Scope, but in some tenants that
+    # property comes back empty while the resolved name lives on the *ScopeDetails
+    # object (same object whose .RecipientFilter is used elsewhere) - so we probe
+    # both, then the pre-formatted "Custom: <name> (...)" string. Returns '' when
+    # there is no resolvable custom scope name (i.e. a built-in scope type).
+    function Get-VizScopeName {
+        param($Assignment, [ValidateSet('Write','Read')]$Which = 'Write')
+        if ($Which -eq 'Write') {
+            $custom   = "$($Assignment.CustomRecipientWriteScope)".Trim()
+            $details  = $Assignment.WriteScopeDetails
+            $fallback = "$($Assignment.RecipientWriteScope)".Trim()
+        }
+        else {
+            $custom   = "$($Assignment.CustomRecipientReadScope)".Trim()
+            $details  = $Assignment.ReadScopeDetails
+            $fallback = "$($Assignment.RecipientReadScope)".Trim()
+        }
+        if ($custom) { return $custom }
+        if ($details) {
+            foreach ($prop in 'Name','ScopeName') {
+                if ($details.PSObject.Properties.Match($prop).Count -gt 0) {
+                    $dn = "$($details.$prop)".Trim()
+                    if ($dn) { return $dn }
+                }
+            }
+        }
+        $m = [regex]::Match($fallback, '^Custom:\s*(.+?)(?:\s*\(Filter:.*)?$')
+        if ($m.Success) { return $m.Groups[1].Value.Trim() }
+        return ''
+    }
+
+    # Reverse map "assignment name (lower) -> custom WRITE-scope name", built once
+    # per session. This is the only reliable link for AutoManaged-* assignments,
+    # whose own objects never surface the scope name: we ask Exchange which
+    # assignments each management scope governs via
+    # Get-ManagementRoleAssignment -CustomRecipientWriteScope <scope>.
+    function Get-VizWriteScopeMap {
+        if ($null -ne $script:VizScopeCatalog) { return $script:VizScopeCatalog }
+        $map = @{}
+        if (Test-RBACExchangeConnection) {
+            try {
+                $scopes = @(Get-ManagementScope -ErrorAction Stop | Where-Object { -not $_.Default })
+                foreach ($s in $scopes) {
+                    try {
+                        $used = @(Get-ManagementRoleAssignment -CustomRecipientWriteScope $s.Name -ErrorAction Stop)
+                        foreach ($u in $used) {
+                            $k = "$($u.Name)".Trim().ToLowerInvariant()
+                            if ($k) { $map[$k] = "$($s.Name)" }
+                        }
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+        $script:VizScopeCatalog = $map
+        return $map
+    }
+
+    # Resolve a custom scope's name: from the assignment object, else by
+    # re-querying it by identity, else (write scope) via the reverse scope map.
+    # Result (including '' for "no custom name") is cached per assignment+side so
+    # a render never round-trips twice.
+    function Resolve-VizScopeName {
+        param($Assignment, [ValidateSet('Write','Read')]$Which = 'Write')
+        $name = Get-VizScopeName -Assignment $Assignment -Which $Which
+        if ($name) { return $name }
+
+        $key = "$($Assignment.Name)|$Which"
+        if ($script:VizScopeNameCache.ContainsKey($key)) { return $script:VizScopeNameCache[$key] }
+
+        $resolved = ''
+        $type = if ($Which -eq 'Write') { "$($Assignment.RecipientWriteScope)" } else { "$($Assignment.RecipientReadScope)" }
+        # Only a custom scope whose name didn't come through is worth the work.
+        if ($type -match 'Custom' -and $Assignment.Name -and (Test-RBACExchangeConnection)) {
+            # 1) Name straight off the by-identity object (usual case).
+            try {
+                $full = Get-ManagementRoleAssignment -Identity $Assignment.Name -ErrorAction Stop | Select-Object -First 1
+                if ($full) { $resolved = Get-VizScopeName -Assignment $full -Which $Which }
+            }
+            catch { $resolved = '' }
+            # 2) Reverse scope map for the WRITE scope - covers AutoManaged-*
+            #    assignments whose objects never carry the scope name.
+            if (-not $resolved -and $Which -eq 'Write') {
+                $vmap = Get-VizWriteScopeMap
+                $mk   = "$($Assignment.Name)".Trim().ToLowerInvariant()
+                if ($vmap.ContainsKey($mk)) { $resolved = $vmap[$mk] }
+            }
+        }
+        $script:VizScopeNameCache[$key] = $resolved
+        return $resolved
+    }
+
+    # Scope label for a node: the resolved name when there is one, otherwise the
+    # scope type/enum so the node is never blank.
+    function Get-VizScopeDisplay {
+        param($Assignment, [ValidateSet('Write','Read')]$Which = 'Write')
+        $name = Resolve-VizScopeName -Assignment $Assignment -Which $Which
+        if ($name) { return $name }
+        $fallback = if ($Which -eq 'Write') { "$($Assignment.RecipientWriteScope)" } else { "$($Assignment.RecipientReadScope)" }
+        $fallback = "$fallback".Trim()
+        if (-not $fallback) { return 'Organization' }
+        return $fallback
+    }
+
+    # Flatten a (possibly multi-valued) RecipientFilter into a single valid OPATH.
+    function ConvertTo-VizFilterString {
+        param($RawFilter)
+        if ($null -eq $RawFilter) { return '' }
+        if ($RawFilter -is [string]) { return $RawFilter.Trim() }
+        if ($RawFilter -is [System.Collections.IEnumerable]) {
+            $parts = foreach ($p in $RawFilter) { $t = "$p".Trim(); if ($t) { "($t)" } }
+            return (($parts -join ' -or ').Trim())
+        }
+        return ([string]$RawFilter).Trim()
+    }
+
+    # ---------------- Visualizer: scope members ----------------
+    function Show-VizScopeMembers {
+        if (-not (Require-Connected)) { return }
+        $a = $script:VizAssignment
+        if (-not $a) { Set-Status 'Pick an assignment to visualize first.' 'warn'; return }
+
+        $scopeName = Resolve-VizScopeName -Assignment $a -Which Write
+        if (-not $scopeName) {
+            $builtIn = Get-VizScopeDisplay -Assignment $a -Which Write
+            Set-Status "Assignment '$($a.Name)' uses the built-in write scope '$builtIn' - no custom recipient filter to resolve." 'warn'
+            return
+        }
+
+        $scope = $null
+        try { $scope = Get-ManagementScope -Identity $scopeName -ErrorAction Stop }
+        catch { Set-Status "Could not load management scope '$scopeName': $($_.Exception.Message)" 'error'; return }
+
+        $filter = ConvertTo-VizFilterString -RawFilter $scope.RecipientFilter
+        $root   = "$($scope.RecipientRoot)".Trim()
+        if (-not $filter -and -not $root) {
+            Set-Status "Scope '$scopeName' has neither a RecipientFilter nor a RecipientRoot - nothing to resolve." 'warn'
+            return
+        }
+
+        $cap = $script:VizScopeCap
+        Set-Status "Resolving members of scope '$scopeName' (capped at $cap)…"
+        try {
+            $recipientArgs = @{ ResultSize = $cap; ErrorAction = 'Stop' }
+            if ($filter) { $recipientArgs.RecipientPreviewFilter = $filter }
+            if ($root)   { $recipientArgs.OrganizationalUnit     = $root }
+            $recipients = @(Get-Recipient @recipientArgs |
+                Select-Object Name, RecipientTypeDetails, PrimarySmtpAddress, OrganizationalUnit)
+        }
+        catch { Set-Status "Failed to resolve scope members: $($_.Exception.Message)" 'error'; return }
+
+        $script:VizScopeInfo      = $scope
+        $script:VizScopeTruncated = ($recipients.Count -ge $cap)
+        $script:VizScopeMembers   = $recipients
+        Render-Visualizer
+
+        if ($recipients.Count -eq 0) {
+            Set-Status "Scope '$scopeName' currently matches no recipients." 'warn'
+        }
+        elseif ($script:VizScopeTruncated) {
+            Set-Status "Showing first $cap member(s) of scope '$scopeName' (truncated; refine the filter to narrow)." 'warn'
+        }
+        else {
+            Set-Status "$($recipients.Count) member(s) in scope '$scopeName'." 'ok'
+        }
+    }
+
+    # ---------------- Visualizer: interactive HTML export ----------------
+    # Build a serialisable hub-and-spoke graph model (nodes + edges + legend)
+    # from the current assignment. The HTML viewer lays it out client-side.
+    function Get-VizGraphModel {
+        param($Assignment)
+        $a = $Assignment
+        $entries = Get-VizClassifiedEntries -Role $a.Role
+        $writeScopeName = Get-VizScopeDisplay -Assignment $a -Which Write
+        $readScopeName  = Get-VizScopeDisplay -Assignment $a -Which Read
+
+        $nodes = [System.Collections.Generic.List[object]]::new()
+        $edges = [System.Collections.Generic.List[object]]::new()
+
+        $null = $nodes.Add([ordered]@{ id='hub'; type='hub'; group=''; label="$($a.Name)"; sub='ASSIGNMENT';
+            bg='#E6E0F8'; border='#0078D4'; fg='#3F0C57'; tooltip="Assignment: $($a.Name)" })
+        $null = $nodes.Add([ordered]@{ id='role'; type='role'; group=''; label="$($a.Role)"; sub='What · Role';
+            bg='#DFF6DD'; border='#558B2F'; fg='#1B3A12'; tooltip="Role: $($a.Role)" })
+        $null = $nodes.Add([ordered]@{ id='assignee'; type='assignee'; group=''; label="$($a.RoleAssignee)"; sub="Who · $($a.RoleAssigneeType)";
+            bg='#FFF4CE'; border='#B28704'; fg='#5C3A00'; tooltip="Assignee: $($a.RoleAssignee) ($($a.RoleAssigneeType))" })
+        $null = $nodes.Add([ordered]@{ id='scope'; type='scope'; group=''; label=$writeScopeName; sub="Where · Read: $readScopeName";
+            bg='#FCE4E4'; border='#A4262C'; fg='#7A1A1F'; tooltip="Write scope: $writeScopeName`nRead scope: $readScopeName" })
+
+        $null = $edges.Add([ordered]@{ source='hub'; target='role';     kind='spoke' })
+        $null = $edges.Add([ordered]@{ source='hub'; target='assignee'; kind='spoke' })
+        $null = $edges.Add([ordered]@{ source='hub'; target='scope';    kind='spoke' })
+
+        for ($i = 0; $i -lt $entries.Count; $i++) {
+            $e   = $entries[$i]
+            $pal = $script:VizVerbPalettes[$e.CmdletGroup]
+            $id  = "cmd$i"
+            $null = $nodes.Add([ordered]@{ id=$id; type='cmdlet'; group=$e.CmdletGroup; label="$($e.CmdletShortName)"; sub='';
+                bg=$pal.Bg; border=$pal.Border; fg=$pal.Fg; tooltip="$($e.Name) [$($e.CmdletGroup) · $($e.CmdletVerb)]" })
+            $null = $edges.Add([ordered]@{ source='role'; target=$id; kind='cmdlet'; group=$e.CmdletGroup })
+        }
+
+        $memPal  = $script:VizMemberPalette
+        # Filter out nulls (@($null) is a 1-element array) so the export never
+        # carries a phantom empty member node.
+        $members = @($script:VizScopeMembers | Where-Object { $null -ne $_ })
+        for ($i = 0; $i -lt $members.Count; $i++) {
+            $m  = $members[$i]
+            $id = "mem$i"
+            $null = $nodes.Add([ordered]@{ id=$id; type='member'; group='Member'; label="$($m.Name)"; sub="$($m.RecipientTypeDetails)";
+                bg=$memPal.Bg; border=$memPal.Border; fg=$memPal.Fg; tooltip="$($m.Name)`n$($m.PrimarySmtpAddress)`n$($m.RecipientTypeDetails)" })
+            $null = $edges.Add([ordered]@{ source='scope'; target=$id; kind='member' })
+        }
+
+        $legend = [System.Collections.Generic.List[object]]::new()
+        $groupCounts = @{}
+        foreach ($e in $entries) {
+            if (-not $groupCounts.ContainsKey($e.CmdletGroup)) { $groupCounts[$e.CmdletGroup] = 0 }
+            $groupCounts[$e.CmdletGroup]++
+        }
+        foreach ($g in @('Read','Modify','Destructive','Create','Other')) {
+            if (-not $groupCounts.ContainsKey($g)) { continue }
+            $p = $script:VizVerbPalettes[$g]
+            $null = $legend.Add([ordered]@{ key=$g; label="$g ($($groupCounts[$g]))"; color=$p.Bg; border=$p.Border })
+        }
+        if ($members.Count -gt 0) {
+            $suffix = if ($script:VizScopeTruncated) { '+' } else { '' }
+            $null = $legend.Add([ordered]@{ key='Member'; label="Scope members ($($members.Count)$suffix)"; color=$memPal.Bg; border=$memPal.Border })
+        }
+
+        return [ordered]@{
+            meta = [ordered]@{
+                title           = "$($a.Name)"
+                role            = "$($a.Role)"
+                assignee        = "$($a.RoleAssignee)"
+                assigneeType    = "$($a.RoleAssigneeType)"
+                scope           = $writeScopeName
+                readScope       = $readScopeName
+                cmdletCount     = $entries.Count
+                memberCount     = $members.Count
+                memberTruncated = [bool]$script:VizScopeTruncated
+                generated       = (Get-Date -Format 'yyyy-MM-dd HH:mm')
+            }
+            nodes  = $nodes
+            edges  = $edges
+            legend = $legend
+        }
+    }
+
+    function Export-VizHtml {
+        $a = $script:VizAssignment
+        if (-not $a) { Set-Status 'Pick an assignment to visualize first.' 'warn'; return }
+
+        $dlg = [System.Windows.Forms.SaveFileDialog]::new()
+        $dlg.Filter = 'HTML (*.html)|*.html'
+        $safeName = ("$($a.Name)" -replace '[\\/:*?"<>|]+', '_')
+        $dlg.FileName = "rbac-viz-$safeName-$(Get-Date -Format 'yyyyMMdd-HHmmss').html"
+        if ($dlg.ShowDialog() -ne 'OK') { return }
+
+        try {
+            $model = Get-VizGraphModel -Assignment $a
+            $json  = $model | ConvertTo-Json -Depth 12 -Compress
+            $html  = Build-VizHtmlDocument -Json $json -Title "$($a.Name)" -Generated $model.meta.generated
+            [System.IO.File]::WriteAllText($dlg.FileName, $html, [System.Text.UTF8Encoding]::new($true))
+            Set-Status "Exported interactive HTML to $($dlg.FileName)." 'ok'
+            try { Start-Process $dlg.FileName } catch { }
+        }
+        catch { Set-Status "HTML export failed: $($_.Exception.Message)" 'error' }
+    }
+
+    # Assemble the self-contained interactive HTML document. The graph model is
+    # injected as JSON; the SVG/JS viewer (pan/zoom/drag/hover/details) needs no
+    # external libraries so the file opens offline in any modern browser.
+    function Build-VizHtmlDocument {
+        param([string]$Json, [string]$Title, [string]$Generated)
+
+        # Guard the JSON against premature </script> / comment termination.
+        $safeJson = $Json.Replace('</script>', '<\/script>').Replace('<!--', '<\!--')
+        $esc = {
+            param([string]$s)
+            ($s -replace '&', '&amp;' -replace '<', '&lt;' -replace '>', '&gt;' -replace '"', '&quot;')
+        }
+        $safeTitle = & $esc $Title
+        $safeGen   = & $esc $Generated
+
+        $tpl = @'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RBAC Visualizer - __TITLE__</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; font-family:"Segoe UI",system-ui,sans-serif; color:#201F1E; }
+  #topbar { position:fixed; top:0; left:0; right:0; height:52px; display:flex; align-items:center; gap:12px;
+            padding:0 16px; background:#fff; border-bottom:1px solid #E1DFDD; z-index:10; }
+  #topbar .title { font-weight:600; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:46vw; }
+  #topbar .sub { color:#605E5C; font-size:12px; }
+  #topbar .spacer { flex:1; }
+  #topbar button { font-size:13px; padding:6px 12px; border:1px solid #C8C6C4; background:#fff; border-radius:4px; cursor:pointer; color:#201F1E; }
+  #topbar button:hover { background:#F3F2F1; }
+  #stage { position:fixed; top:52px; left:0; right:0; bottom:0; background:#FAFAFA; overflow:hidden; }
+  svg { width:100%; height:100%; display:block; cursor:grab; }
+  svg.panning { cursor:grabbing; }
+  .edge { stroke:#605E5C; stroke-width:1.4; }
+  .edge.cmdlet { stroke:#558B2F; stroke-width:1.1; stroke-dasharray:4 2; }
+  .edge.member { stroke:#2B88D8; stroke-width:1.0; stroke-dasharray:4 2; }
+  .edge.faded { opacity:0.08; }
+  .node { cursor:pointer; }
+  .node rect, .node circle { stroke-width:1.5; }
+  .node text { pointer-events:none; }
+  .node.faded { opacity:0.12; }
+  .node.hl rect, .node.hl circle { stroke-width:2.6; }
+  #panel { position:fixed; right:20px; top:72px; width:300px; background:#fff; border:1px solid #E1DFDD;
+           border-radius:6px; box-shadow:0 8px 32px rgba(0,0,0,0.15); z-index:20; display:none; overflow:hidden; }
+  #panel .ph { display:flex; align-items:center; justify-content:space-between; padding:10px 14px; border-bottom:1px solid #E1DFDD; }
+  #panel .ph h4 { margin:0; font-size:14px; word-break:break-word; }
+  #panel .ph button { border:none; background:transparent; cursor:pointer; font-size:18px; color:#605E5C; line-height:1; }
+  #panel .pb { padding:12px 14px; font-size:13px; }
+  #panel .row { margin-bottom:10px; }
+  #panel .k { color:#605E5C; display:block; font-size:11px; margin-bottom:2px; text-transform:uppercase; letter-spacing:.03em; }
+  #panel .v { word-break:break-word; white-space:pre-wrap; }
+  #panel .badge { display:inline-block; padding:2px 8px; border-radius:9999px; font-size:11px; font-weight:600; }
+  #legend { position:fixed; left:16px; bottom:16px; background:#fff; border:1px solid #E1DFDD; border-radius:6px;
+            padding:8px 12px; font-size:11px; z-index:10; box-shadow:0 4px 16px rgba(0,0,0,0.08); max-width:72vw; }
+  #legend .lt { font-family:Consolas,monospace; color:#605E5C; margin-right:8px; }
+  #legend .li { display:inline-flex; align-items:center; gap:5px; margin:2px 10px 2px 0; }
+  #legend .sw { width:11px; height:11px; border-radius:2px; display:inline-block; border:1px solid rgba(0,0,0,.25); }
+  #hint { position:fixed; right:16px; bottom:14px; color:#A19F9D; font-size:11px; z-index:10; }
+</style>
+</head>
+<body>
+<div id="topbar">
+  <span class="title" id="ttl">__TITLE__</span>
+  <span class="sub">RBAC assignment - exported __GENERATED__</span>
+  <span class="spacer"></span>
+  <button id="btnFit">Fit</button>
+  <button id="btnReset">Re-layout</button>
+</div>
+<div id="stage">
+  <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" fill="#9B9B9B"></path>
+      </marker>
+    </defs>
+    <g id="viewport">
+      <g id="edges"></g>
+      <g id="nodes"></g>
+    </g>
+  </svg>
+</div>
+<div id="panel">
+  <div class="ph"><h4 id="pName"></h4><button id="pClose" title="Close">&times;</button></div>
+  <div class="pb" id="pBody"></div>
+</div>
+<div id="legend"></div>
+<div id="hint">drag nodes - scroll to zoom - drag empty space to pan</div>
+<script>
+var GRAPH = __GRAPH_JSON__;
+(function(){
+  "use strict";
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var svg = document.getElementById('svg');
+  var viewport = document.getElementById('viewport');
+  var gEdges = document.getElementById('edges');
+  var gNodes = document.getElementById('nodes');
+  var byId = {};
+  GRAPH.nodes.forEach(function(n){ byId[n.id] = n; });
+
+  var adj = {};
+  GRAPH.nodes.forEach(function(n){ adj[n.id] = {}; });
+  GRAPH.edges.forEach(function(e){ adj[e.source][e.target]=1; adj[e.target][e.source]=1; });
+
+  function esc(s){ return String(s==null?'':s); }
+  function truncate(s, max){ s=String(s==null?'':s); return s.length>max ? s.slice(0,max-1)+'…' : s; }
+
+  function layout(){
+    var cx=0, cy=0;
+    var hub = byId['hub']; if(hub){ hub.x=cx; hub.y=cy; hub.w=140; hub.h=140; hub.shape='circle'; }
+    var spokes = { role:{x:cx-300,y:cy-190}, assignee:{x:cx+300,y:cy-190}, scope:{x:cx,y:cy+250} };
+    ['role','assignee','scope'].forEach(function(k){
+      var n=byId[k]; if(!n) return; n.x=spokes[k].x; n.y=spokes[k].y; n.w=212; n.h=66; n.shape='rect';
+    });
+    fan(GRAPH.nodes.filter(function(n){return n.type==='cmdlet';}), byId['role'],  cx, cy, 156, 26, 215, 84, 12);
+    fan(GRAPH.nodes.filter(function(n){return n.type==='member';}), byId['scope'], cx, cy, 168, 26, 185, 70, 11);
+  }
+  function fan(items, center, cx, cy, w, h, baseR, ringSpacing, perRing){
+    if(!center) return;
+    var vx=center.x-cx, vy=center.y-cy, vlen=Math.hypot(vx,vy)||1;
+    var base=Math.atan2(vy/vlen, vx/vlen);
+    items.forEach(function(n,i){
+      var ring=Math.floor(i/perRing), pos=i%perRing;
+      var r=baseR + ring*ringSpacing;
+      var ang=base + 2*Math.PI*pos/perRing;
+      n.x = center.x + r*Math.cos(ang);
+      n.y = center.y + r*Math.sin(ang);
+      n.w=w; n.h=h; n.shape='rect';
+    });
+  }
+
+  var nodeEls = {};
+  var edgeEls = [];
+  function render(){
+    gEdges.textContent=''; gNodes.textContent=''; nodeEls={}; edgeEls=[];
+    GRAPH.edges.forEach(function(e){
+      var line=document.createElementNS(SVGNS,'line');
+      var cls='edge'+(e.kind==='cmdlet'?' cmdlet':(e.kind==='member'?' member':''));
+      line.setAttribute('class',cls);
+      line.setAttribute('marker-end','url(#arrow)');
+      gEdges.appendChild(line);
+      edgeEls.push({el:line, e:e});
+    });
+    GRAPH.nodes.forEach(function(n){
+      var g=document.createElementNS(SVGNS,'g');
+      g.setAttribute('class','node');
+      g.setAttribute('data-id',n.id);
+      var shape;
+      if(n.shape==='circle'){
+        shape=document.createElementNS(SVGNS,'circle');
+        shape.setAttribute('r', n.w/2);
+      } else {
+        shape=document.createElementNS(SVGNS,'rect');
+        shape.setAttribute('x', -n.w/2); shape.setAttribute('y', -n.h/2);
+        shape.setAttribute('width', n.w); shape.setAttribute('height', n.h);
+        shape.setAttribute('rx', 5);
+      }
+      shape.setAttribute('fill', n.bg||'#fff');
+      shape.setAttribute('stroke', n.border||'#605E5C');
+      g.appendChild(shape);
+      appendLabels(g, n);
+      gNodes.appendChild(g);
+      nodeEls[n.id]=g;
+    });
+    positionAll();
+  }
+  function appendLabels(g, n){
+    var fg=n.fg||'#201F1E';
+    var lines=[];
+    if(n.type==='hub'){
+      lines.push({t:'ASSIGNMENT', s:9, c:'#605E5C', dy:-6, mono:true});
+      lines.push({t:truncate(n.label,18), s:12, c:fg, dy:12, bold:true});
+    } else if(n.type==='role'||n.type==='assignee'||n.type==='scope'){
+      lines.push({t:truncate(n.sub||'', 30), s:9, c:'#605E5C', dy:-15, mono:true});
+      lines.push({t:truncate(n.label, 24), s:13, c:fg, dy:5, bold:true});
+    } else {
+      lines.push({t:truncate(n.label, 22), s:9.5, c:fg, dy:3, bold:true});
+    }
+    lines.forEach(function(l){
+      if(!l.t) return;
+      var t=document.createElementNS(SVGNS,'text');
+      t.setAttribute('text-anchor','middle');
+      t.setAttribute('y', l.dy);
+      t.setAttribute('font-size', l.s);
+      t.setAttribute('fill', l.c);
+      if(l.bold) t.setAttribute('font-weight','600');
+      if(l.mono) t.setAttribute('font-family','Consolas,monospace');
+      t.textContent=l.t;
+      g.appendChild(t);
+    });
+  }
+  function positionAll(){
+    GRAPH.nodes.forEach(function(n){
+      var g=nodeEls[n.id];
+      if(g) g.setAttribute('transform','translate('+n.x+','+n.y+')');
+    });
+    edgeEls.forEach(function(le){
+      var s=byId[le.e.source], t=byId[le.e.target];
+      if(!s||!t) return;
+      le.el.setAttribute('x1', s.x); le.el.setAttribute('y1', s.y);
+      le.el.setAttribute('x2', t.x); le.el.setAttribute('y2', t.y);
+    });
+  }
+
+  var view={x:0,y:0,k:1};
+  function applyView(){ viewport.setAttribute('transform','translate('+view.x+','+view.y+') scale('+view.k+')'); }
+  function fit(){
+    if(!GRAPH.nodes.length) return;
+    var xs=[], ys=[];
+    GRAPH.nodes.forEach(function(n){ xs.push(n.x-n.w/2); xs.push(n.x+n.w/2); ys.push(n.y-n.h/2); ys.push(n.y+n.h/2); });
+    var minX=Math.min.apply(null,xs), maxX=Math.max.apply(null,xs);
+    var minY=Math.min.apply(null,ys), maxY=Math.max.apply(null,ys);
+    var pad=60, w=svg.clientWidth, h=svg.clientHeight;
+    var bw=(maxX-minX)+pad*2, bh=(maxY-minY)+pad*2;
+    var k=Math.min(w/bw, h/bh, 1.6); if(!isFinite(k)||k<=0) k=1;
+    view.k=k;
+    view.x = w/2 - ((minX+maxX)/2)*k;
+    view.y = h/2 - ((minY+maxY)/2)*k;
+    applyView();
+  }
+
+  svg.addEventListener('wheel', function(ev){
+    ev.preventDefault();
+    var rect=svg.getBoundingClientRect();
+    var mx=ev.clientX-rect.left, my=ev.clientY-rect.top;
+    var factor=Math.pow(1.0015, -ev.deltaY);
+    var nk=Math.min(Math.max(view.k*factor, 0.12), 5);
+    var f=nk/view.k;
+    view.x = mx - (mx-view.x)*f;
+    view.y = my - (my-view.y)*f;
+    view.k = nk;
+    applyView();
+  }, {passive:false});
+
+  var drag=null, suppressClick=false;
+  svg.addEventListener('mousedown', function(ev){
+    var ng=ev.target.closest ? ev.target.closest('.node') : null;
+    var rect=svg.getBoundingClientRect();
+    var mx=ev.clientX-rect.left, my=ev.clientY-rect.top;
+    if(ng){
+      var id=ng.getAttribute('data-id');
+      drag={type:'node', id:id, sx:mx, sy:my, ox:byId[id].x, oy:byId[id].y, moved:false};
+    } else {
+      svg.classList.add('panning');
+      drag={type:'pan', sx:mx, sy:my, ox:view.x, oy:view.y, moved:false};
+    }
+  });
+  window.addEventListener('mousemove', function(ev){
+    if(!drag) return;
+    var rect=svg.getBoundingClientRect();
+    var mx=ev.clientX-rect.left, my=ev.clientY-rect.top;
+    if(Math.abs(mx-drag.sx)+Math.abs(my-drag.sy) > 3) drag.moved=true;
+    if(drag.type==='pan'){
+      view.x=drag.ox+(mx-drag.sx); view.y=drag.oy+(my-drag.sy); applyView();
+    } else {
+      var n=byId[drag.id];
+      n.x=drag.ox+(mx-drag.sx)/view.k;
+      n.y=drag.oy+(my-drag.sy)/view.k;
+      positionAll();
+    }
+  });
+  window.addEventListener('mouseup', function(){
+    if(drag && drag.moved){ suppressClick=true; setTimeout(function(){ suppressClick=false; }, 0); }
+    svg.classList.remove('panning');
+    drag=null;
+  });
+
+  gNodes.addEventListener('mouseover', function(ev){
+    var ng=ev.target.closest('.node'); if(!ng) return;
+    setHighlight(ng.getAttribute('data-id'));
+  });
+  gNodes.addEventListener('mouseout', function(ev){
+    var ng=ev.target.closest('.node'); if(!ng) return;
+    clearHighlight();
+  });
+  function setHighlight(id){
+    GRAPH.nodes.forEach(function(n){
+      var g=nodeEls[n.id]; if(!g) return;
+      if(n.id===id || adj[id][n.id]){ g.classList.remove('faded'); g.classList.add('hl'); }
+      else { g.classList.add('faded'); g.classList.remove('hl'); }
+    });
+    edgeEls.forEach(function(le){
+      var on = (le.e.source===id || le.e.target===id);
+      le.el.classList.toggle('faded', !on);
+    });
+  }
+  function clearHighlight(){
+    GRAPH.nodes.forEach(function(n){ var g=nodeEls[n.id]; if(g){ g.classList.remove('faded','hl'); } });
+    edgeEls.forEach(function(le){ le.el.classList.remove('faded'); });
+  }
+
+  var panel=document.getElementById('panel');
+  gNodes.addEventListener('click', function(ev){
+    var ng=ev.target.closest('.node'); if(!ng) return;
+    if(suppressClick) return;
+    showPanel(byId[ng.getAttribute('data-id')]);
+  });
+  function typeLabel(t){
+    return ({hub:'Assignment',role:'Role',assignee:'Assignee',scope:'Scope',cmdlet:'Cmdlet',member:'Scope member'})[t]||t;
+  }
+  function showPanel(n){
+    document.getElementById('pName').textContent = n.label||'';
+    var rows='';
+    rows += '<div class="row"><span class="k">Type</span><span class="badge" style="background:'+n.bg+';color:'+n.fg+';border:1px solid '+n.border+';">'+esc(typeLabel(n.type))+(n.group?(' · '+esc(n.group)):'')+'</span></div>';
+    if(n.sub) rows += '<div class="row"><span class="k">Detail</span><span class="v">'+esc(n.sub)+'</span></div>';
+    if(n.tooltip) rows += '<div class="row"><span class="k">Info</span><span class="v">'+esc(n.tooltip)+'</span></div>';
+    document.getElementById('pBody').innerHTML = rows;
+    panel.style.display='block';
+  }
+  document.getElementById('pClose').addEventListener('click', function(){ panel.style.display='none'; });
+  svg.addEventListener('click', function(ev){ if(ev.target===svg && !suppressClick) panel.style.display='none'; });
+
+  (function(){
+    var L=document.getElementById('legend');
+    if(!GRAPH.legend || !GRAPH.legend.length){ L.style.display='none'; return; }
+    var html='<span class="lt">LEGEND</span>';
+    GRAPH.legend.forEach(function(it){
+      html += '<span class="li"><span class="sw" style="background:'+it.color+';border-color:'+it.border+'"></span>'+esc(it.label)+'</span>';
+    });
+    L.innerHTML=html;
+  })();
+
+  document.getElementById('btnFit').addEventListener('click', fit);
+  document.getElementById('btnReset').addEventListener('click', function(){ layout(); positionAll(); fit(); });
+  window.addEventListener('resize', fit);
+
+  layout(); render(); fit();
+})();
+</script>
+</body>
+</html>
+'@
+
+        return $tpl.Replace('__GRAPH_JSON__', $safeJson).Replace('__TITLE__', $safeTitle).Replace('__GENERATED__', $safeGen)
     }
 
     # ---------------- Connect / Disconnect ----------------
@@ -4332,6 +5307,30 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     $UI.BtnFilterRow.Add_Click({ Toggle-FilterRow })
     $UI.BtnWrap.Add_Click({ Toggle-Wrap })
     $UI.BtnAutoFit.Add_Click({ Auto-FitColumns })
+
+    # Activity log drawer controls.
+    if ($UI.BtnLogClear) {
+        $UI.BtnLogClear.Add_Click({
+            $UI.TxtLog.Clear()
+            $script:GuiLogCount = 0
+            if ($UI.LogCount) { $UI.LogCount.Text = '' }
+        })
+    }
+    if ($UI.BtnLogExport) {
+        $UI.BtnLogExport.Add_Click({
+            if ([string]::IsNullOrEmpty($UI.TxtLog.Text)) { Set-Status 'Activity log is empty.' 'warn'; return }
+            $dlg = [System.Windows.Forms.SaveFileDialog]::new()
+            $dlg.Filter   = 'Log file (*.log)|*.log|Text file (*.txt)|*.txt'
+            $dlg.FileName = "ExchangeRBACManager-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+            if ($dlg.ShowDialog() -eq 'OK') {
+                try {
+                    [System.IO.File]::WriteAllText($dlg.FileName, $UI.TxtLog.Text, [System.Text.UTF8Encoding]::new($true))
+                    Set-Status "Exported activity log to $($dlg.FileName)." 'ok'
+                }
+                catch { Set-Status "Log export failed: $($_.Exception.Message)" 'error' }
+            }
+        })
+    }
 
     # External links in the sidebar footer - open in the user's default browser.
     $openLink = {
