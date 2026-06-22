@@ -3501,6 +3501,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'       -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Edit'             -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditRoleGroup }))
                 $null = $list.Add((New-ActionButton -Label 'Copy'             -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-CopyRoleGroup }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize'    -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Related }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'       -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteRoleGroup }))
             }
             'Roles' {
@@ -3509,6 +3510,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'  -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Edit'        -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditRole }))
                 $null = $list.Add((New-ActionButton -Label 'Copy'        -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-CopyRole }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'BtnDark'  -Kind 'Selection'   -OnClick { Visualize-Related }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'  -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteRole }))
             }
             'Assignments' {
@@ -3525,6 +3527,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
                 $null = $list.Add((New-ActionButton -Label 'Edit'            -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditScope }))
                 $null = $list.Add((New-ActionButton -Label 'Preview members' -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Preview-ScopeMembers }))
+                $null = $list.Add((New-ActionButton -Label '⤳  Visualize'    -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Related }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'      -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteScope }))
             }
             'UserRights' {
@@ -4290,10 +4293,104 @@ $($script:DlgResourcesXaml)
         Switch-View -View 'Visualizer'
     }
 
+    # Find the role assignments related to a Roles / Role Groups / Scopes row.
+    # A role / role group / scope can back several assignments, so this is what
+    # lets those views reach the (single-assignment) Visualizer.
+    function Get-VizRelatedAssignments {
+        param([string]$View, $Selected)
+        if (-not $script:Cache.Assignments) {
+            try { $script:Cache.Assignments = @(Get-RBACRoleAssignments) } catch { $script:Cache.Assignments = @() }
+        }
+        $all  = @($script:Cache.Assignments)
+        $name = "$($Selected.Name)".Trim()
+        if (-not $name) { return @() }
+
+        switch ($View) {
+            'Roles' {
+                return @($all | Where-Object { "$($_.Role)" -eq $name })
+            }
+            'RoleGroups' {
+                return @($all | Where-Object {
+                    "$($_.RoleAssigneeType)" -eq 'RoleGroup' -and "$($_.RoleAssignee)" -eq $name
+                })
+            }
+            'Scopes' {
+                # Direct references first (custom scope name or the resolved enum).
+                $related = @($all | Where-Object {
+                    "$($_.CustomRecipientReadScope)"  -eq $name -or
+                    "$($_.CustomRecipientWriteScope)" -eq $name -or
+                    "$($_.RecipientReadScope)"        -like "*$name*" -or
+                    "$($_.RecipientWriteScope)"       -like "*$name*"
+                })
+                # Augment with AutoManaged-style assignments that don't expose the
+                # scope name, via a direct reverse lookup for THIS scope (one call,
+                # cheaper than building the full scope map).
+                if (Test-RBACExchangeConnection) {
+                    try {
+                        $governed = @(Get-ManagementRoleAssignment -CustomRecipientWriteScope $name -ErrorAction Stop |
+                            ForEach-Object { "$($_.Name)" })
+                        if ($governed.Count -gt 0) {
+                            $have = @{}; foreach ($r in $related) { $have["$($r.Name)"] = $true }
+                            foreach ($a in $all) {
+                                if (($governed -contains "$($a.Name)") -and -not $have.ContainsKey("$($a.Name)")) {
+                                    $related += $a
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+                return @($related)
+            }
+        }
+        return @()
+    }
+
+    # "Visualize" from Roles / Role Groups / Scopes: resolve the related
+    # assignments, then go straight to the graph (1 match) or let the user pick
+    # (several matches). Pre-filtered picker reuses Pick-VizAssignment.
+    function Visualize-Related {
+        if (-not (Require-Connected)) { return }
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a row first.' 'warn'; return }
+        $raw  = if ($sel._raw) { $sel._raw } else { $sel }
+        $view = $script:CurrentView
+        $label = switch ($view) { 'Roles' { 'role' } 'RoleGroups' { 'role group' } 'Scopes' { 'scope' } default { 'item' } }
+        $name = "$($raw.Name)"
+
+        $related = @(Get-VizRelatedAssignments -View $view -Selected $raw)
+        if ($related.Count -eq 0) {
+            Set-Status "No role assignment references $label '$name'." 'warn'
+            return
+        }
+        if ($related.Count -eq 1) {
+            $script:VizAssignment = $related[0]
+            Reset-VizScopeMembers
+            Switch-View -View 'Visualizer'
+            Set-Status "Visualizing $($related[0].Name)." 'ok'
+            return
+        }
+        # Several assignments back this row - let the user choose.
+        Pick-VizAssignment -Assignments $related `
+            -Title "Assignments using $label '$name'" `
+            -Subtitle "$($related.Count) assignments reference this $label. Pick one to visualize as a hub-and-spoke graph."
+    }
+
     function Pick-VizAssignment {
-        if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
-        $assignments = @($script:Cache.Assignments)
-        if ($assignments.Count -eq 0) { Set-Status 'No assignments loaded.' 'warn'; return }
+        param(
+            [array]$Assignments,
+            [string]$Title    = 'Pick a role assignment',
+            [string]$Subtitle = 'Choose the assignment to visualize as a hub-and-spoke graph.'
+        )
+        # Without an explicit list, offer every assignment (the toolbar "Pick
+        # assignment…" entry point). Callers from the Roles/Role Groups/Scopes
+        # views pass a pre-filtered list of the assignments related to their row.
+        if (-not $PSBoundParameters.ContainsKey('Assignments')) {
+            if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
+            $Assignments = @($script:Cache.Assignments)
+        }
+        $assignments = @($Assignments)
+        if ($assignments.Count -eq 0) { Set-Status 'No assignments to pick from.' 'warn'; return }
 
         $rows = foreach ($a in $assignments) {
             [PSCustomObject]@{
@@ -4321,9 +4418,9 @@ $($script:DlgResourcesXaml)
 
     <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
       <StackPanel>
-        <TextBlock Text="Pick a role assignment" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
-        <TextBlock Text="Choose the assignment to visualize as a hub-and-spoke graph."
-                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+        <TextBlock x:Name="DlgTitle" Text="Pick a role assignment" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock x:Name="DlgSubtitle" Text="Choose the assignment to visualize as a hub-and-spoke graph."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
       </StackPanel>
     </Border>
 
@@ -4381,10 +4478,41 @@ $($script:DlgResourcesXaml)
         $countText = $dlg.FindName('CountText')
         $btnOK     = $dlg.FindName('BtnOK')
         $btnCancel = $dlg.FindName('BtnCancel')
+        $dlgTitle  = $dlg.FindName('DlgTitle')
+        $dlgSub    = $dlg.FindName('DlgSubtitle')
+        if ($dlgTitle) { $dlgTitle.Text = $Title }
+        if ($dlgSub)   { $dlgSub.Text   = $Subtitle }
 
         $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView($rows)
         $list.ItemsSource = $rows
         $countText.Text   = "$($rows.Count) items"
+
+        # Click a GridView column header to sort by that column (toggle asc/desc).
+        # WPF's GridView doesn't sort on its own, so wire it up against the same
+        # default view (sorting composes with the search filter above). The header
+        # text equals the bound property name (Name/Role/Assignee/Scope).
+        $sortState = @{ Property = $null; Ascending = $true }
+        $list.AddHandler(
+            [System.Windows.Controls.GridViewColumnHeader]::ClickEvent,
+            [System.Windows.RoutedEventHandler]{
+                param($s, $e)
+                $header = $e.OriginalSource -as [System.Windows.Controls.GridViewColumnHeader]
+                if (-not $header -or $null -eq $header.Column) { return }
+                $prop = "$($header.Content)".Trim()
+                if (-not $prop) { return }
+                if ($sortState.Property -eq $prop) { $sortState.Ascending = -not $sortState.Ascending }
+                else { $sortState.Property = $prop; $sortState.Ascending = $true }
+                $dir = if ($sortState.Ascending) {
+                    [System.ComponentModel.ListSortDirection]::Ascending
+                } else {
+                    [System.ComponentModel.ListSortDirection]::Descending
+                }
+                $view.SortDescriptions.Clear()
+                $view.SortDescriptions.Add(
+                    [System.ComponentModel.SortDescription]::new($prop, $dir))
+                $view.Refresh()
+            }
+        )
 
         $applyFilter = {
             $needle = ([string]$filterBox.Text).Trim().ToLowerInvariant()
@@ -4421,7 +4549,10 @@ $($script:DlgResourcesXaml)
         if ($dlg.ShowDialog() -eq $true -and $list.SelectedItem) {
             $script:VizAssignment = $list.SelectedItem._raw
             Reset-VizScopeMembers   # different assignment -> drop the previous scope fan
-            Render-Visualizer
+            # Re-render in place when already on the Visualizer; otherwise switch
+            # to it (Switch-View paints the canvas itself).
+            if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer }
+            else { Switch-View -View 'Visualizer' }
             Set-Status "Visualizing $($list.SelectedItem.Name)." 'ok'
         }
     }

@@ -11,14 +11,26 @@ Instead of stitching together `Get-RoleGroup`, `Get-ManagementRoleAssignment`, `
 Features
 --------
 
-*   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other), exportable to PNG
+*   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other). Reachable from Role Assignments **and** from Roles / Role Groups / Scopes (pick among the related assignments). Resolved scope **names** (not just the `CustomRecipientScope` type), an optional fan of the scope's resolved members, and export to **PNG** or a self-contained **interactive HTML** file
 *   **Eight integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, Audit Log
 *   **Edit role assignments** - change the write scope (predefined / custom recipient scope picker / OU DN / clear) and the enabled flag, with a built-in cmdlet preview before any change is run
 *   **Scope membership preview** - validate a `RecipientRestrictionFilter` *before* attaching it to an assignment
 *   **Scope cross-reference** - the details panel of a scope shows every role assignment that references it (read / write / scope) so you can answer "where is this scope used?" without writing a script
 *   **User Rights lookup** - effective roles for a UPN/alias, including how each role was granted (direct vs via group)
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
-*   **Live filter, contextual actions, CSV/PNG export** - on every view
+*   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
+*   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
+
+What's new in 1.2.0
+-------------------
+
+*   **Visualize from any RBAC object**: the `Visualize` action is now available on Roles, Role Groups and Scopes - not just Role Assignments. Because one role / role group / scope can back several assignments, it resolves the related assignments and either jumps straight to the graph (single match) or opens a pre-filtered picker (several matches).
+*   **Resolved scope names in the Visualizer**: the *Scope* node shows the custom scope's real name instead of the bare `CustomRecipientScope` type. The name is resolved from the assignment, then by re-querying it by identity, then via a reverse map (`Get-ManagementRoleAssignment -CustomRecipientWriteScope`) so even auto-managed assignments that never surface the name are covered.
+*   **Scope members on the canvas**: a `Scope members` button resolves the write scope's recipients (same engine as *Preview members*) and fans them out around the *Scope* node, with a matching legend entry.
+*   **Interactive HTML export**: export the current Visualizer graph to a single self-contained HTML file (SVG + vanilla JS, no dependencies, works offline) with pan / zoom, node drag, hover highlight, a details panel and a legend.
+*   **Activity log drawer**: a collapsible log at the bottom of the window records every status message (timestamped, severity-tagged), auto-opens on the first error, and can be cleared or exported to a `.log` file. Each session is also mirrored to a file in `%TEMP%`.
+*   **Sortable "Pick assignment" picker**: click a column header to sort the assignment picker (toggle ascending / descending); composes with the search box.
+*   **Delete actions report real failures**: write/delete actions that Exchange rejects (for example deleting a scope still referenced by an assignment) now surface the actual Exchange error instead of a false "deleted" success.
 
 What's new in 1.0.0
 -------------------
@@ -86,9 +98,13 @@ Pick any role assignment and you get:
 
 Buttons:
 
-- **Pick assignment...** - choose any assignment from a searchable picker
-- **Refit / Center** - re-renders if you resized the window
+- **Pick assignment...** - choose any assignment from a searchable, sortable picker
+- **Zoom in / Zoom out / Center** - navigate the canvas
+- **Scope members** - resolve the write scope's recipients and fan them out around the *Scope* node
 - **Export PNG** - saves the canvas to a PNG for tickets, reviews or documentation
+- **Export HTML** - saves a self-contained interactive graph (pan / zoom / drag / details, no dependencies, opens offline)
+
+You can also reach the Visualizer straight from a **Role**, **Role Group** or **Scope**: select a row and click **Visualize**. Since one of those can back several assignments, you either land directly on the graph (single match) or pick from the related assignments.
 
 Typically the section you open first when investigating an unexpected permission, preparing a change request, or documenting a delegation for an audit.
 
@@ -103,7 +119,7 @@ Each section wraps a specific Exchange RBAC cmdlet (or composition of cmdlets) a
 
 Backed by `Get-RoleGroup`. Lists every Universal Security Group that bundles management roles with members and scopes. The grid shows the group name, an **Origin** badge (Built-in vs Custom), the number of members and roles bound to it, and the description.
 
-Use it to inventory who-can-do-what at the group level, find empty or oversized groups, or copy a built-in group as a starting template for a tighter custom one.
+Use it to inventory who-can-do-what at the group level, find empty or oversized groups, or copy a built-in group as a starting template for a tighter custom one. Selecting a group also exposes **Visualize**, which graphs one of the assignments that delegate to it.
 
 ### 2. Roles
 
@@ -111,7 +127,7 @@ Use it to inventory who-can-do-what at the group level, find empty or oversized 
 
 Backed by `Get-ManagementRole`. A management role is the smallest container of cmdlets and parameters that grant a capability. The grid shows the role name, its **Type** (regular vs unscoped), an **Origin** badge (Built-in vs Custom), the **Parent role** it derives from, and the description.
 
-Use it to understand the role hierarchy (every custom role inherits from a parent built-in role) and to find candidate roles when you are designing a least-privilege delegation.
+Use it to understand the role hierarchy (every custom role inherits from a parent built-in role) and to find candidate roles when you are designing a least-privilege delegation. Selecting a role exposes **Visualize**, which graphs an assignment that grants it (or lets you pick when several do).
 
 ### 3. Role Assignments
 
@@ -127,7 +143,7 @@ This is the workhorse view: most "why does this user have access?" questions are
 
 Backed by `Get-ManagementScope`. Scopes restrict a role assignment to a subset of recipients, servers or databases. The grid shows the scope name, the restriction type, the recipient root (when set) and the recipient filter expression.
 
-A custom scope's filter is a piece of OPATH that is famously easy to write incorrectly. The next section is the antidote.
+Selecting a scope exposes **Visualize** (graph an assignment that uses it) alongside **Preview members**. A custom scope's filter is a piece of OPATH that is famously easy to write incorrectly. The next section is the antidote.
 
 ### 5. Scope membership preview
 
