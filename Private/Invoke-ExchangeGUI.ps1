@@ -3549,6 +3549,28 @@ $($script:DlgResourcesXaml)
         catch { Set-Status "Command lookup failed: $($_.Exception.Message)" 'error' }
     }
 
+    # From a Command Lookup row (a role that grants the looked-up cmdlet), jump to
+    # the Roles view and select that role so the details panel lists ALL its cmdlets.
+    function Show-RoleFromSelection {
+        $sel = $UI.MainGrid.SelectedItem
+        if (-not $sel) { Set-Status 'Select a role first.' 'warn'; return }
+        $roleName = "$($sel.RoleName)"
+        if (-not $roleName) { $roleName = "$($sel.Name)" }
+        $roleName = $roleName.Trim()
+        if (-not $roleName) { Set-Status 'Selected row has no role.' 'warn'; return }
+
+        Switch-View -View 'Roles'
+        $match = @($UI.MainGrid.ItemsSource) | Where-Object { "$($_.Name)" -eq $roleName } | Select-Object -First 1
+        if ($match) {
+            $UI.MainGrid.SelectedItem = $match
+            $UI.MainGrid.ScrollIntoView($match)
+            Set-Status "Showing role '$roleName' and its cmdlets." 'ok'
+        }
+        else {
+            Set-Status "Role '$roleName' is not in the Roles list." 'warn'
+        }
+    }
+
     # ---------------- View switching ----------------
     function Switch-View {
         param([string]$View)
@@ -3653,8 +3675,9 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label '⤳  Visualize' -Style 'BtnDark'   -Kind 'Selection' -OnClick { Visualize-Selected }))
             }
             'Commands' {
-                $null = $list.Add((New-ActionButton -Label 'Lookup'     -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Apply-Search }))
-                $null = $list.Add((New-ActionButton -Label 'Export CSV' -Style 'ActionBtn'  -Kind 'Tool'    -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Lookup'       -Style 'PrimaryBtn' -Kind 'Primary'   -OnClick { Apply-Search }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'   -Style 'ActionBtn'  -Kind 'Tool'      -OnClick { Export-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label '⤳  View role' -Style 'BtnDark'    -Kind 'Selection' -OnClick { Show-RoleFromSelection }))
             }
             'MyCmdlets' {
                 $null = $list.Add((New-ActionButton -Label '⟳  Refresh'  -Style 'ActionBtn' -Kind 'Tool' -OnClick { Reload-CurrentView }))
@@ -5406,6 +5429,15 @@ var GRAPH = __GRAPH_JSON__;
             }
 
             Update-ConnectionUI
+
+            # Warm the Command Lookup typeahead cache now, while the loading overlay
+            # is still up. Get-Command over the EXO session module is bound to this
+            # runspace (it can't be backgrounded - see the note above), so building
+            # it here keeps it off the keystroke path; otherwise it ran on the UI
+            # thread at the 2nd character typed and froze Command Lookup.
+            Show-Loading -Message 'Caching available cmdlets…'
+            Ensure-CommandSuggestions
+
             Set-Status 'Connected. Click Refresh or pick a section in the sidebar to load data.' 'ok'
         }
         catch { Set-Status "Connect failed: $($_.Exception.Message)" 'error' }
