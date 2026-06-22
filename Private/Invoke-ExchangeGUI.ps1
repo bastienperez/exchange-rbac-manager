@@ -5421,6 +5421,12 @@ var GRAPH = __GRAPH_JSON__;
         try {
             $null = Disconnect-RBACExchange
             $script:Cache.Clear()
+            # Session-scoped caches live outside $script:Cache - clear them so a
+            # reconnect (possibly to another tenant) rebuilds from scratch.
+            $script:CommandSuggestions       = $null
+            $script:CommandSuggestionsLoaded = $false
+            $script:VizScopeNameCache        = @{}
+            $script:VizScopeCatalog          = $null
             $UI.MainGrid.ItemsSource = $null
             $UI.ItemCount.Text = '0 items'
             Update-ConnectionUI
@@ -5553,8 +5559,11 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     # returns in milliseconds, unlike Get-ManagementRoleEntry which calls the
     # service for every role/cmdlet pair.
     function Ensure-CommandSuggestions {
-        if ($script:CommandSuggestions -and $script:CommandSuggestions.Count -gt 0) { return }
-        if (-not (Test-RBACExchangeConnection)) { return }
+        # Build once per session. The "Loaded" flag (not the list count) gates the
+        # retry so an empty/unresolved module result is NOT re-fetched on every
+        # keystroke - that repeated Get-Command would re-freeze the UI.
+        if ($script:CommandSuggestionsLoaded) { return }
+        if (-not (Test-RBACExchangeConnection)) { return }   # retry once connected
         try {
             $moduleNames = @(
                 Get-ConnectionInformation -ErrorAction SilentlyContinue |
@@ -5574,6 +5583,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
             })
         }
         catch { $script:CommandSuggestions = @() }
+        $script:CommandSuggestionsLoaded = $true
     }
 
     function Update-SuggestPopup {
