@@ -2757,10 +2757,12 @@ $($script:DlgResourcesXaml)
         # handlers don't depend on the enclosing scope (which can be lost when
         # event handlers fire outside Render-Visualizer's frame).
         $makeDraggable = {
-            param([System.Windows.Controls.Border]$elem, [array]$Links = @())
+            param([System.Windows.Controls.Border]$elem, [array]$Links = @(), $NodeInfo = $null)
             $elem.Tag = @{
-                Links  = $Links
-                Drag   = $false
+                Links    = $Links
+                NodeInfo = $NodeInfo
+                Drag     = $false
+                Moved    = $false
                 StartX = 0; StartY = 0
                 ElemX  = 0; ElemY  = 0
                 Canvas = $cv
@@ -2772,6 +2774,7 @@ $($script:DlgResourcesXaml)
                 $t = $s.Tag
                 $p = $e.GetPosition($t.Canvas)
                 $t.Drag   = $true
+                $t.Moved  = $false
                 $t.StartX = $p.X; $t.StartY = $p.Y
                 $t.ElemX  = [System.Windows.Controls.Canvas]::GetLeft($s)
                 $t.ElemY  = [System.Windows.Controls.Canvas]::GetTop($s)
@@ -2780,15 +2783,22 @@ $($script:DlgResourcesXaml)
             })
             $elem.Add_MouseLeftButtonUp({
                 param($s, $e)
-                $s.Tag.Drag = $false
+                $t = $s.Tag
+                $t.Drag = $false
                 $s.ReleaseMouseCapture()
                 $e.Handled = $true
+                # A press released without a real drag is a click -> open the
+                # node's details in the slide-out panel.
+                if (-not $t.Moved -and $t.NodeInfo -and $script:VizNodeDetailsAction) {
+                    & $script:VizNodeDetailsAction $t.NodeInfo
+                }
             })
             $elem.Add_MouseMove({
                 param($s, $e)
                 $t = $s.Tag
                 if (-not $t.Drag) { return }
                 $p = $e.GetPosition($t.Canvas)
+                if (([Math]::Abs($p.X - $t.StartX) + [Math]::Abs($p.Y - $t.StartY)) -gt 3) { $t.Moved = $true }
                 $newX = $t.ElemX + ($p.X - $t.StartX)
                 $newY = $t.ElemY + ($p.Y - $t.StartY)
                 [System.Windows.Controls.Canvas]::SetLeft($s, $newX)
@@ -2910,7 +2920,27 @@ $($script:DlgResourcesXaml)
         foreach ($l in $spokeLines) {
             $null = $hubLinks.Add(@{ Line = $l; End = 'start'; OffsetX = $hubR; OffsetY = $hubR })
         }
-        & $makeDraggable $hub $hubLinks
+        # Per-group cmdlet breakdown, reused by the hub + role node details.
+        $grpCounts = @{}
+        foreach ($e in $allEntries) {
+            if (-not $grpCounts.ContainsKey($e.CmdletGroup)) { $grpCounts[$e.CmdletGroup] = 0 }
+            $grpCounts[$e.CmdletGroup]++
+        }
+        $groupSummary = (@('Read','Modify','Destructive','Create','Other') | Where-Object { $grpCounts[$_] } |
+            ForEach-Object { "$_ $($grpCounts[$_])" }) -join ' · '
+        $hubInfo = @{
+            Title = "$($a.Name)"; Badge = 'ASSIGNMENT'
+            Rows = @(
+                [pscustomobject]@{ Key='Role';          Value="$($a.Role)" }
+                [pscustomobject]@{ Key='Assignee';      Value="$($a.RoleAssignee)" }
+                [pscustomobject]@{ Key='Assignee type'; Value="$($a.RoleAssigneeType)" }
+                [pscustomobject]@{ Key='Write scope';   Value=$writeScopeName }
+                [pscustomobject]@{ Key='Read scope';    Value=$readScopeName }
+                [pscustomobject]@{ Key='Enabled';       Value="$($a.Enabled)" }
+                [pscustomobject]@{ Key='Cmdlets';       Value="$($allEntries.Count)" }
+            )
+        }
+        & $makeDraggable $hub $hubLinks $hubInfo
 
         # -- Spoke nodes ---------------------------------------------------
         for ($si = 0; $si -lt $spokes.Count; $si++) {
@@ -2969,7 +2999,39 @@ $($script:DlgResourcesXaml)
                     })
                 }
             }
-            & $makeDraggable $node $links
+
+            # Per-spoke details for the click-to-inspect panel.
+            $spokeInfo = $null
+            switch ($si) {
+                0 {
+                    $rows = @([pscustomobject]@{ Key='Cmdlets granted'; Value="$($allEntries.Count)" })
+                    if ($groupSummary) { $rows += [pscustomobject]@{ Key='By group'; Value=$groupSummary } }
+                    $spokeInfo = @{ Title="$($a.Role)"; Badge='ROLE'; Rows=$rows }
+                }
+                1 {
+                    $spokeInfo = @{ Title="$($a.RoleAssignee)"; Badge='ASSIGNEE'; Rows=@(
+                        [pscustomobject]@{ Key='Type'; Value="$($a.RoleAssigneeType)" }
+                    ) }
+                }
+                2 {
+                    $rows = @(
+                        [pscustomobject]@{ Key='Write scope'; Value=$writeScopeName }
+                        [pscustomobject]@{ Key='Read scope';  Value=$readScopeName }
+                    )
+                    if ($script:VizScopeInfo) {
+                        $f = ConvertTo-VizFilterString -RawFilter $script:VizScopeInfo.RecipientFilter
+                        if ($f) { $rows += [pscustomobject]@{ Key='Recipient filter'; Value=$f } }
+                        $root = "$($script:VizScopeInfo.RecipientRoot)".Trim()
+                        if ($root) { $rows += [pscustomobject]@{ Key='Recipient root'; Value=$root } }
+                    }
+                    if ($null -ne $script:VizScopeMembers) {
+                        $mc = @($script:VizScopeMembers | Where-Object { $null -ne $_ }).Count
+                        $rows += [pscustomobject]@{ Key='Members resolved'; Value="$mc$(if ($script:VizScopeTruncated) { '+' } else { '' })" }
+                    }
+                    $spokeInfo = @{ Title=$writeScopeName; Badge='SCOPE'; Rows=$rows }
+                }
+            }
+            & $makeDraggable $node $links $spokeInfo
         }
 
         # -- Cmdlet nodes --------------------------------------------------
@@ -3001,7 +3063,12 @@ $($script:DlgResourcesXaml)
                 OffsetY = $cmdletNodeH / 2
                 Arrow   = $cmdletArrows[$i]
             })
-            & $makeDraggable $node $links
+            $cmdInfo = @{ Title="$($entry.CmdletShortName)"; Badge='CMDLET'; Rows=@(
+                [pscustomobject]@{ Key='Full name'; Value="$($entry.Name)" }
+                [pscustomobject]@{ Key='Group';     Value="$($entry.CmdletGroup)" }
+                [pscustomobject]@{ Key='Verb';      Value="$($entry.CmdletVerb)" }
+            ) }
+            & $makeDraggable $node $links $cmdInfo
         }
 
         # -- Scope member nodes --------------------------------------------
@@ -3033,7 +3100,12 @@ $($script:DlgResourcesXaml)
                 OffsetY = $memberNodeH / 2
                 Arrow   = $memberArrows[$i]
             })
-            & $makeDraggable $node $links
+            $memInfo = @{ Title="$($m.Name)"; Badge='SCOPE MEMBER'; Rows=@(
+                [pscustomobject]@{ Key='Type';                Value="$($m.RecipientTypeDetails)" }
+                [pscustomobject]@{ Key='Primary SMTP';        Value="$($m.PrimarySmtpAddress)" }
+                [pscustomobject]@{ Key='Organizational unit'; Value="$($m.OrganizationalUnit)" }
+            ) }
+            & $makeDraggable $node $links $memInfo
         }
 
         # -- Legend (when there are cmdlets and/or scope members to colour-code)
@@ -4582,6 +4654,31 @@ $($script:DlgResourcesXaml)
         $script:VizScopeInfo      = $null
         $script:VizScopeTruncated = $false
     }
+
+    # Render a visualizer node's details into the shared slide-out panel (same UI
+    # the grids use). $NodeInfo = @{ Title; Badge; Rows = @([pscustomobject]@{Key;Value}) }.
+    function Show-VizNodeDetails {
+        param($NodeInfo)
+        if (-not $NodeInfo) { return }
+        $UI.DetailsTitle.Text = "$($NodeInfo.Title)"
+        if ($NodeInfo.Badge) {
+            $UI.DetailsTypeBadgeText.Text   = "$($NodeInfo.Badge)"
+            $UI.DetailsTypeBadge.Visibility = 'Visible'
+        }
+        else { $UI.DetailsTypeBadge.Visibility = 'Collapsed' }
+
+        $rows = New-Object System.Collections.ObjectModel.ObservableCollection[Object]
+        foreach ($r in @($NodeInfo.Rows)) {
+            $val = "$($r.Value)"; if ([string]::IsNullOrEmpty($val)) { $val = '-' }
+            $rows.Add([PSCustomObject]@{ Key = "$($r.Key)"; Value = $val })
+        }
+        $UI.DetailsList.ItemsSource = $rows
+        $UI.DetailsCol.Width        = New-Object System.Windows.GridLength 360
+        $UI.DetailsPanel.Visibility = 'Visible'
+    }
+    # Script-scoped handle so the (scope-detached) node drag handlers can invoke
+    # it. Calls the function by name - same proven pattern as the toolbar buttons.
+    $script:VizNodeDetailsAction = { param($info) Show-VizNodeDetails $info }
 
     # Fetch a role's cmdlets and tag each with its verb group/colour bucket,
     # sorted group -> verb -> name. Shared by the WPF render and the HTML export

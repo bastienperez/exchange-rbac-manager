@@ -21,6 +21,11 @@ Features
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
 
+What's new in 1.3.0
+-------------------
+
+*   **Click a node to inspect it**: every Visualizer node (assignment hub, Role / Assignee / Scope spokes, cmdlets and scope members) is now clickable and opens the slide-out details panel with information tailored to its type - the assignment's role/assignee/scopes/enabled state, the role's cmdlet count and per-group breakdown, a cmdlet's full name and verb group, or a member's type / primary SMTP / OU. Dragging a node still works; a press without a drag is treated as a click.
+
 What's new in 1.2.0
 -------------------
 
@@ -103,6 +108,8 @@ Buttons:
 - **Scope members** - resolve the write scope's recipients and fan them out around the *Scope* node
 - **Export PNG** - saves the canvas to a PNG for tickets, reviews or documentation
 - **Export HTML** - saves a self-contained interactive graph (pan / zoom / drag / details, no dependencies, opens offline)
+
+**Click any node** (the assignment hub, a spoke, a cmdlet or a scope member) to inspect it in the slide-out details panel - role/assignee/scope properties, the per-group cmdlet breakdown, a cmdlet's full name and verb group, or a member's type / SMTP / OU.
 
 You can also reach the Visualizer straight from a **Role**, **Role Group** or **Scope**: select a row and click **Visualize**. Since one of those can back several assignments, you either land directly on the graph (single match) or pick from the related assignments.
 
