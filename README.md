@@ -22,6 +22,11 @@ Features
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
 
+What's new in 1.5.0
+-------------------
+
+*   **Copy + navigate from a Visualizer node**: the node details panel now has a copy icon that copies the node's name to the clipboard, and an "Open in ..." button that jumps to that element's own section - a role to Roles (with its cmdlets), the assignment to Role Assignments, a custom scope to Scopes, an assignee or scope member to User Rights, a cmdlet to Command Lookup.
+
 What's new in 1.4.0
 -------------------
 
@@ -115,7 +120,7 @@ Buttons:
 - **Export PNG** - saves the canvas to a PNG for tickets, reviews or documentation
 - **Export HTML** - saves a self-contained interactive graph (pan / zoom / drag / details, no dependencies, opens offline)
 
-**Click any node** (the assignment hub, a spoke, a cmdlet or a scope member) to inspect it in the slide-out details panel - role/assignee/scope properties, the per-group cmdlet breakdown, a cmdlet's full name and verb group, or a member's type / SMTP / OU.
+**Click any node** (the assignment hub, a spoke, a cmdlet or a scope member) to inspect it in the slide-out details panel - role/assignee/scope properties, the per-group cmdlet breakdown, a cmdlet's full name and verb group, or a member's type / SMTP / OU. From the panel you can **copy the node's name** (copy icon next to the title) and **jump to its own section** ("Open in ..."): a role opens in Roles, the assignment in Role Assignments, a custom scope in Scopes, an assignee/member in User Rights, a cmdlet in Command Lookup.
 
 You can also reach the Visualizer straight from a **Role**, **Role Group** or **Scope**: select a row and click **Visualize**. Since one of those can back several assignments, you either land directly on the graph (single match) or pick from the related assignments.
 

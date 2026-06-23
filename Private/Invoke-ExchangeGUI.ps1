@@ -541,6 +541,7 @@ function Invoke-ExchangeGUI {
             <Grid.RowDefinitions>
               <RowDefinition Height="Auto"/>
               <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
               <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
             <Grid Grid.Row="0" Margin="16,14,8,10">
@@ -561,22 +562,51 @@ function Invoke-ExchangeGUI {
                 <TextBlock x:Name="DetailsTitle" FontSize="16" FontWeight="SemiBold"
                            Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
               </StackPanel>
-              <Button x:Name="BtnDetailsClose" Grid.Column="1" Content="✕" Width="28" Height="28"
-                      Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="14">
-                <Button.Style>
-                  <Style TargetType="Button">
-                    <Setter Property="Foreground" Value="#605E5C"/>
-                    <Style.Triggers>
-                      <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Foreground" Value="#0078D4"/>
-                      </Trigger>
-                    </Style.Triggers>
-                  </Style>
-                </Button.Style>
-              </Button>
+              <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button x:Name="BtnDetailsCopy" Content="⧉" Width="28" Height="28" ToolTip="Copy name"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="14">
+                  <Button.Style>
+                    <Style TargetType="Button">
+                      <Setter Property="Foreground" Value="#605E5C"/>
+                      <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter Property="Foreground" Value="#0078D4"/>
+                        </Trigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+                <Button x:Name="BtnDetailsClose" Content="✕" Width="28" Height="28"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="14">
+                  <Button.Style>
+                    <Style TargetType="Button">
+                      <Setter Property="Foreground" Value="#605E5C"/>
+                      <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter Property="Foreground" Value="#0078D4"/>
+                        </Trigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
+              </StackPanel>
             </Grid>
-            <Border Grid.Row="1" Height="1" Background="#E1DFDD" Margin="16,0,16,8"/>
-            <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="16,0,16,16">
+            <Button x:Name="BtnDetailsGoto" Grid.Row="1" HorizontalAlignment="Left" Margin="16,0,16,8"
+                    Padding="0" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                    FontSize="12" Visibility="Collapsed">
+              <Button.Style>
+                <Style TargetType="Button">
+                  <Setter Property="Foreground" Value="#0078D4"/>
+                  <Style.Triggers>
+                    <Trigger Property="IsMouseOver" Value="True">
+                      <Setter Property="Foreground" Value="#005A9E"/>
+                    </Trigger>
+                  </Style.Triggers>
+                </Style>
+              </Button.Style>
+            </Button>
+            <Border Grid.Row="2" Height="1" Background="#E1DFDD" Margin="16,0,16,8"/>
+            <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto" Padding="16,0,16,16">
               <ItemsControl x:Name="DetailsList">
                 <ItemsControl.ItemTemplate>
                   <DataTemplate>
@@ -777,7 +807,7 @@ function Invoke-ExchangeGUI {
             'BtnFilterRow','BtnWrap','BtnAutoFit','GridModifiers',
             'ItemCount','ToolbarTools','ToolbarPrimary',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder','VizPlaceholderBox',
-            'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose',
+            'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose','BtnDetailsCopy','BtnDetailsGoto',
             'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive',
             'LoadingOverlay','LoadingText',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion',
@@ -812,6 +842,10 @@ function Invoke-ExchangeGUI {
     # cross-reference an assignment to its scope name when the assignment object
     # exposes neither the name nor a usable *ScopeDetails.Name.
     $script:VizScopeCatalog = $null
+
+    # Where the details panel's "Open in ..." button should navigate (set per
+    # Visualizer node, cleared for grid rows). @{ View; Name; Label } or $null.
+    $script:DetailsNavTarget = $null
 
     # Shared cmdlet verb -> group classification + colour palette. Defined once at
     # script scope so the WPF visualizer render AND the interactive HTML export
@@ -2560,6 +2594,10 @@ $($script:DlgResourcesXaml)
         }
 
         $UI.DetailsList.ItemsSource = $rows
+        # Grid rows don't drive the "Open in ..." navigation (that's a Visualizer-node
+        # affordance), so clear any leftover target and hide the button.
+        $script:DetailsNavTarget = $null
+        if ($UI.BtnDetailsGoto) { $UI.BtnDetailsGoto.Visibility = 'Collapsed' }
         $UI.DetailsCol.Width = New-Object System.Windows.GridLength 360
         $UI.DetailsPanel.Visibility = 'Visible'
     }
@@ -2567,6 +2605,8 @@ $($script:DlgResourcesXaml)
         $UI.DetailsPanel.Visibility = 'Collapsed'
         $UI.DetailsCol.Width = New-Object System.Windows.GridLength 0
         $UI.DetailsList.ItemsSource = $null
+        $script:DetailsNavTarget = $null
+        if ($UI.BtnDetailsGoto) { $UI.BtnDetailsGoto.Visibility = 'Collapsed' }
     }
 
     # ---------------- Visualizer ----------------
@@ -2958,6 +2998,7 @@ $($script:DlgResourcesXaml)
             ForEach-Object { "$_ $($grpCounts[$_])" }) -join ' · '
         $hubInfo = @{
             Title = "$($a.Name)"; Badge = 'ASSIGNMENT'
+            Nav   = @{ View='Assignments'; Name="$($a.Name)"; Label='Open in Role Assignments' }
             Rows = @(
                 [pscustomobject]@{ Key='Role';          Value="$($a.Role)" }
                 [pscustomobject]@{ Key='Assignee';      Value="$($a.RoleAssignee)" }
@@ -3034,12 +3075,17 @@ $($script:DlgResourcesXaml)
                 0 {
                     $rows = @([pscustomobject]@{ Key='Cmdlets granted'; Value="$($allEntries.Count)" })
                     if ($groupSummary) { $rows += [pscustomobject]@{ Key='By group'; Value=$groupSummary } }
-                    $spokeInfo = @{ Title="$($a.Role)"; Badge='ROLE'; Rows=$rows }
+                    $spokeInfo = @{
+                        Title="$($a.Role)"; Badge='ROLE'; Rows=$rows
+                        Nav = @{ View='Roles'; Name="$($a.Role)"; Label='Open in Roles' }
+                    }
                 }
                 1 {
-                    $spokeInfo = @{ Title="$($a.RoleAssignee)"; Badge='ASSIGNEE'; Rows=@(
-                        [pscustomobject]@{ Key='Type'; Value="$($a.RoleAssigneeType)" }
-                    ) }
+                    $spokeInfo = @{
+                        Title="$($a.RoleAssignee)"; Badge='ASSIGNEE'
+                        Rows=@( [pscustomobject]@{ Key='Type'; Value="$($a.RoleAssigneeType)" } )
+                        Nav = @{ View='UserRights'; Name="$($a.RoleAssignee)"; Label='Look up in User Rights' }
+                    }
                 }
                 2 {
                     $rows = @(
@@ -3057,6 +3103,11 @@ $($script:DlgResourcesXaml)
                         $rows += [pscustomobject]@{ Key='Members resolved'; Value="$mc$(if ($script:VizScopeTruncated) { '+' } else { '' })" }
                     }
                     $spokeInfo = @{ Title=$writeScopeName; Badge='SCOPE'; Rows=$rows }
+                    # Only custom scopes have a Scopes-view row to open.
+                    $customScopeName = Get-VizScopeName -Assignment $a -Which Write
+                    if ($customScopeName) {
+                        $spokeInfo.Nav = @{ View='Scopes'; Name=$customScopeName; Label='Open in Scopes' }
+                    }
                 }
             }
             & $makeDraggable $node $links $spokeInfo
@@ -3091,11 +3142,15 @@ $($script:DlgResourcesXaml)
                 OffsetY = $cmdletNodeH / 2
                 Arrow   = $cmdletArrows[$i]
             })
-            $cmdInfo = @{ Title="$($entry.CmdletShortName)"; Badge='CMDLET'; Rows=@(
-                [pscustomobject]@{ Key='Full name'; Value="$($entry.Name)" }
-                [pscustomobject]@{ Key='Group';     Value="$($entry.CmdletGroup)" }
-                [pscustomobject]@{ Key='Verb';      Value="$($entry.CmdletVerb)" }
-            ) }
+            $cmdInfo = @{
+                Title="$($entry.CmdletShortName)"; Badge='CMDLET'
+                Nav = @{ View='Commands'; Name="$($entry.CmdletShortName)"; Label='Look up in Command Lookup' }
+                Rows=@(
+                    [pscustomobject]@{ Key='Full name'; Value="$($entry.Name)" }
+                    [pscustomobject]@{ Key='Group';     Value="$($entry.CmdletGroup)" }
+                    [pscustomobject]@{ Key='Verb';      Value="$($entry.CmdletVerb)" }
+                )
+            }
             & $makeDraggable $node $links $cmdInfo
         }
 
@@ -3128,11 +3183,17 @@ $($script:DlgResourcesXaml)
                 OffsetY = $memberNodeH / 2
                 Arrow   = $memberArrows[$i]
             })
-            $memInfo = @{ Title="$($m.Name)"; Badge='SCOPE MEMBER'; Rows=@(
-                [pscustomobject]@{ Key='Type';                Value="$($m.RecipientTypeDetails)" }
-                [pscustomobject]@{ Key='Primary SMTP';        Value="$($m.PrimarySmtpAddress)" }
-                [pscustomobject]@{ Key='Organizational unit'; Value="$($m.OrganizationalUnit)" }
-            ) }
+            $memInfo = @{
+                Title="$($m.Name)"; Badge='SCOPE MEMBER'
+                Rows=@(
+                    [pscustomobject]@{ Key='Type';                Value="$($m.RecipientTypeDetails)" }
+                    [pscustomobject]@{ Key='Primary SMTP';        Value="$($m.PrimarySmtpAddress)" }
+                    [pscustomobject]@{ Key='Organizational unit'; Value="$($m.OrganizationalUnit)" }
+                )
+            }
+            if ("$($m.Name)".Trim()) {
+                $memInfo.Nav = @{ View='UserRights'; Name="$($m.Name)"; Label='Look up in User Rights' }
+            }
             & $makeDraggable $node $links $memInfo
         }
 
@@ -3549,6 +3610,38 @@ $($script:DlgResourcesXaml)
         catch { Set-Status "Command lookup failed: $($_.Exception.Message)" 'error' }
     }
 
+    # Jump to a section with a specific element in focus. For grid views
+    # (Roles / Assignments / Scopes) it switches and selects the row by Name; for
+    # the lookup views it runs the query. Used by the details-panel "Open in ..."
+    # button and by Command Lookup's "View role".
+    function Navigate-ToEntity {
+        param([string]$View, [string]$Name)
+        $n = "$Name".Trim()
+        if (-not $View -or -not $n) { return }
+        if ($View -eq 'UserRights') {
+            Switch-View -View 'UserRights'   # blanks the search box -> set it AFTER
+            $UI.SearchBox.Text = $n
+            Lookup-UserRights -User $n
+            return
+        }
+        if ($View -eq 'Commands') {
+            Switch-View -View 'Commands'
+            $UI.SearchBox.Text = $n
+            Lookup-Command -Cmdlet $n
+            return
+        }
+        Switch-View -View $View   # Roles / Assignments / Scopes - grid loaded by Load-ViewData
+        $match = @($UI.MainGrid.ItemsSource) | Where-Object { "$($_.Name)" -eq $n } | Select-Object -First 1
+        if ($match) {
+            $UI.MainGrid.SelectedItem = $match
+            $UI.MainGrid.ScrollIntoView($match)
+            Set-Status "Showing '$n'." 'ok'
+        }
+        else {
+            Set-Status "'$n' is not in the $View list." 'warn'
+        }
+    }
+
     # From a Command Lookup row (a role that grants the looked-up cmdlet), jump to
     # the Roles view and select that role so the details panel lists ALL its cmdlets.
     function Show-RoleFromSelection {
@@ -3556,19 +3649,8 @@ $($script:DlgResourcesXaml)
         if (-not $sel) { Set-Status 'Select a role first.' 'warn'; return }
         $roleName = "$($sel.RoleName)"
         if (-not $roleName) { $roleName = "$($sel.Name)" }
-        $roleName = $roleName.Trim()
-        if (-not $roleName) { Set-Status 'Selected row has no role.' 'warn'; return }
-
-        Switch-View -View 'Roles'
-        $match = @($UI.MainGrid.ItemsSource) | Where-Object { "$($_.Name)" -eq $roleName } | Select-Object -First 1
-        if ($match) {
-            $UI.MainGrid.SelectedItem = $match
-            $UI.MainGrid.ScrollIntoView($match)
-            Set-Status "Showing role '$roleName' and its cmdlets." 'ok'
-        }
-        else {
-            Set-Status "Role '$roleName' is not in the Roles list." 'warn'
-        }
+        if (-not "$roleName".Trim()) { Set-Status 'Selected row has no role.' 'warn'; return }
+        Navigate-ToEntity -View 'Roles' -Name $roleName
     }
 
     # ---------------- View switching ----------------
@@ -4745,6 +4827,15 @@ $($script:DlgResourcesXaml)
             $rows.Add([PSCustomObject]@{ Key = "$($r.Key)"; Value = $val })
         }
         $UI.DetailsList.ItemsSource = $rows
+
+        # "Open in <section>" navigation target for this node (e.g. role -> Roles).
+        $script:DetailsNavTarget = $NodeInfo.Nav
+        if ($NodeInfo.Nav -and $UI.BtnDetailsGoto) {
+            $UI.BtnDetailsGoto.Content    = "↗  $($NodeInfo.Nav.Label)"
+            $UI.BtnDetailsGoto.Visibility = 'Visible'
+        }
+        elseif ($UI.BtnDetailsGoto) { $UI.BtnDetailsGoto.Visibility = 'Collapsed' }
+
         $UI.DetailsCol.Width        = New-Object System.Windows.GridLength 360
         $UI.DetailsPanel.Visibility = 'Visible'
     }
@@ -5690,6 +5781,20 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
         if ($n -eq 1) { Show-Details -Item $UI.MainGrid.SelectedItem } else { Hide-Details }
     })
     $UI.BtnDetailsClose.Add_Click({ Hide-Details })
+    $UI.BtnDetailsCopy.Add_Click({
+        $name = "$($UI.DetailsTitle.Text)"
+        if ([string]::IsNullOrEmpty($name)) { return }
+        try {
+            [System.Windows.Clipboard]::SetText($name)
+            Set-Status "Copied '$name' to clipboard." 'ok'
+        }
+        catch { Set-Status "Copy failed: $($_.Exception.Message)" 'error' }
+    })
+    $UI.BtnDetailsGoto.Add_Click({
+        if ($script:DetailsNavTarget) {
+            Navigate-ToEntity -View $script:DetailsNavTarget.View -Name $script:DetailsNavTarget.Name
+        }
+    })
 
     $UI.VizCanvas.Add_SizeChanged({ if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } })
 
