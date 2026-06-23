@@ -12,7 +12,8 @@ Features
 --------
 
 *   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other). Reachable from Role Assignments **and** from Roles / Role Groups / Scopes (pick among the related assignments). Resolved scope **names** (not just the `CustomRecipientScope` type), an optional fan of the scope's resolved members, and export to **PNG** or a self-contained **interactive HTML** file
-*   **Eight integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, Audit Log
+*   **Nine integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, My Cmdlets, Audit Log
+*   **My Cmdlets** - lists the cmdlets the connected account can actually run in this session, with each cmdlet's specific parameters; live-filterable by name or parameter
 *   **Edit role assignments** - change the write scope (predefined / custom recipient scope picker / OU DN / clear) and the enabled flag, with a built-in cmdlet preview before any change is run
 *   **Scope membership preview** - validate a `RecipientRestrictionFilter` *before* attaching it to an assignment
 *   **Scope cross-reference** - the details panel of a scope shows every role assignment that references it (read / write / scope) so you can answer "where is this scope used?" without writing a script
@@ -20,6 +21,26 @@ Features
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
+
+What's new in 1.6.0
+-------------------
+
+*   **Visualize a user or a role, not just an assignment**: the Visualizer can now graph three subjects. **Pick user…** takes an account (UPN/alias) and draws everything it can do - a hub for the account ringed by every role it holds (directly or via a role group), with the "via" path and scope on each; click a role to list its cmdlets. **Pick role…** draws a role's cmdlets (coloured by verb group) plus a "Used by" column of the assignments/assignees that grant it. Every node keeps the copy-name and "Open in ..." navigation. The original single-assignment view is unchanged.
+
+What's new in 1.5.0
+-------------------
+
+*   **Copy + navigate from a Visualizer node**: the node details panel now has a copy icon that copies the node's name to the clipboard, and an "Open in ..." button that jumps to that element's own section - a role to Roles (with its cmdlets), the assignment to Role Assignments, a custom scope to Scopes, an assignee or scope member to User Rights, a cmdlet to Command Lookup.
+
+What's new in 1.4.0
+-------------------
+
+*   **New "My Cmdlets" section**: a dedicated view listing the cmdlets the connected account can run in the current Exchange Online session (resolved from the session's role-scoped module), each with its specific parameters (the 15 PowerShell common parameters are stripped out). The list is local to the session, so it loads instantly and live-filters as you type - by cmdlet name or by parameter. Includes Refresh and Export CSV; click a row to see the full parameter list in the details panel.
+
+What's new in 1.3.0
+-------------------
+
+*   **Click a node to inspect it**: every Visualizer node (assignment hub, Role / Assignee / Scope spokes, cmdlets and scope members) is now clickable and opens the slide-out details panel with information tailored to its type - the assignment's role/assignee/scopes/enabled state, the role's cmdlet count and per-group breakdown, a cmdlet's full name and verb group, or a member's type / primary SMTP / OU. Dragging a node still works; a press without a drag is treated as a click.
 
 What's new in 1.2.0
 -------------------
@@ -98,18 +119,20 @@ Pick any role assignment and you get:
 
 Buttons:
 
-- **Pick assignment...** - choose any assignment from a searchable, sortable picker
+- **Pick assignment... / Pick user... / Pick role...** - graph a single assignment, an account (every role it holds, directly or via a role group - "what can this account do?"), or a role (its cmdlets + what uses it)
 - **Zoom in / Zoom out / Center** - navigate the canvas
 - **Scope members** - resolve the write scope's recipients and fan them out around the *Scope* node
 - **Export PNG** - saves the canvas to a PNG for tickets, reviews or documentation
 - **Export HTML** - saves a self-contained interactive graph (pan / zoom / drag / details, no dependencies, opens offline)
 
+**Click any node** (the assignment hub, a spoke, a cmdlet or a scope member) to inspect it in the slide-out details panel - role/assignee/scope properties, the per-group cmdlet breakdown, a cmdlet's full name and verb group, or a member's type / SMTP / OU. From the panel you can **copy the node's name** (copy icon next to the title) and **jump to its own section** ("Open in ..."): a role opens in Roles, the assignment in Role Assignments, a custom scope in Scopes, an assignee/member in User Rights, a cmdlet in Command Lookup.
+
 You can also reach the Visualizer straight from a **Role**, **Role Group** or **Scope**: select a row and click **Visualize**. Since one of those can back several assignments, you either land directly on the graph (single match) or pick from the related assignments.
 
 Typically the section you open first when investigating an unexpected permission, preparing a change request, or documenting a delegation for an audit.
 
-The eight sections
-------------------
+The nine sections
+-----------------
 
 Each section wraps a specific Exchange RBAC cmdlet (or composition of cmdlets) and exposes the same toolbar pattern: live search, chip filters, *Refresh*, *Export CSV*, plus contextual actions on selected rows.
 
@@ -171,9 +194,15 @@ Useful before/after onboarding, offboarding, or to answer "why does this user ha
 
 Type a cmdlet name (`Set-Mailbox`, `New-MailboxExportRequest`, ...) and press *Enter*. The module calls `Get-ManagementRole -Cmdlet <cmdlet>` and returns every role that grants it, with type, origin (Built-in / Custom) and description.
 
-The reverse of every other section: instead of starting from a role and finding its cmdlets, you start from a cmdlet and find which role(s) would let a user run it. Indispensable when an admin reports "I get an access denied on `Set-MailboxRegionalConfiguration`" and you have to figure out which role is missing.
+The reverse of every other section: instead of starting from a role and finding its cmdlets, you start from a cmdlet and find which role(s) would let a user run it. Indispensable when an admin reports "I get an access denied on `Set-MailboxRegionalConfiguration`" and you have to figure out which role is missing. Select one of the returned roles and click **View role** to jump straight to the Roles view for it and see its full cmdlet list.
 
-### 8. Audit Log
+### 8. My Cmdlets
+
+When you connect to Exchange Online, EXO builds a session module that exposes only the cmdlets your RBAC roles grant you. This section lists them - one row per cmdlet, with the cmdlet's own parameters (the common parameters like `-Verbose` / `-WhatIf` are stripped so only the meaningful ones show). It answers "what can the account I'm connected as actually run?" without cross-referencing roles by hand.
+
+Because the list is local to the already-loaded session module, it loads instantly and filters live as you type - match on a cmdlet name (`mailbox`) or on a parameter (`-Identity`). Click a row to see the full parameter list in the details panel, and export the whole set to CSV.
+
+### 9. Audit Log
 
 Planned for a future release. Clicking the *Audit Log* section currently shows a "coming soon" notice. The implementation will call `Search-AdminAuditLog` over the last 7 / 30 / 90 days (limit imposed by Exchange Online) and surface recent admin changes (caller, cmdlet, target object, parameters).
 
