@@ -2546,7 +2546,7 @@ $($script:DlgResourcesXaml)
             # (Get-ManagementRoleAssignment -CustomRecipientWriteScope) that catches
             # AutoManaged assignments whose cached CustomRecipientWriteScope is empty
             # - the cache-only filter used to miss those and show "Used by 0".
-            $used = @(Get-VizRelatedAssignments -View 'Scopes' -Selected $Item | Sort-Object Name)
+            $used = @(Invoke-WithLoading -Message "Finding assignments using '$scopeName'…" -Action { Get-VizRelatedAssignments -View 'Scopes' -Selected $Item } | Sort-Object Name)
             $rows.Add([PSCustomObject]@{
                 Key   = "Used by ($($used.Count) assignment$(if ($used.Count -eq 1) { '' } else { 's' }))"
                 Value = ''
@@ -2574,7 +2574,7 @@ $($script:DlgResourcesXaml)
             $cmdletNames = $script:Cache.RoleCmdlets[$Item.Name]
             if (-not $cmdletNames) {
                 try {
-                    $entries = Get-ManagementRoleEntry -Identity "$($Item.Name)\*" -ErrorAction Stop
+                    $entries = Invoke-WithLoading -Message "Loading cmdlets for '$($Item.Name)'…" -Action { Get-ManagementRoleEntry -Identity "$($Item.Name)\*" -ErrorAction Stop }
                     $cmdletNames = @($entries | ForEach-Object Name | Sort-Object)
                     $script:Cache.RoleCmdlets[$Item.Name] = $cmdletNames
                 }
@@ -2656,10 +2656,33 @@ $($script:DlgResourcesXaml)
             $cv.RenderTransform = $tg
         }
 
+        Update-VizHeader
         switch ($script:VizKind) {
             'User' { Render-VizUser }
             'Role' { Render-VizRole }
             default { Render-VizAssignment }
+        }
+    }
+
+    # Keep the breadcrumb / title / description in sync with the current subject,
+    # instead of always showing the assignment ("hub-and-spoke") wording.
+    function Update-VizHeader {
+        switch ($script:VizKind) {
+            'User' {
+                $UI.Crumbs.Text    = 'RBAC ▸ Visualizer ▸ User'
+                $UI.ViewTitle.Text = "User · $($script:VizUser.Name)"
+                $UI.ViewDesc.Text  = 'Every role this account holds - directly or via a role group. Click a role to see its cmdlets.'
+            }
+            'Role' {
+                $UI.Crumbs.Text    = 'RBAC ▸ Visualizer ▸ Role'
+                $UI.ViewTitle.Text = "Role · $($script:VizRole.Name)"
+                $UI.ViewDesc.Text  = "The role's cmdlets (coloured by group) and the assignments that use it."
+            }
+            default {
+                $UI.Crumbs.Text    = 'RBAC ▸ Visualizer'
+                $UI.ViewTitle.Text = 'RBAC Visualizer · hub-and-spoke'
+                $UI.ViewDesc.Text  = 'One assignment in the centre, three spokes out: Role · Assignee · Scope.'
+            }
         }
     }
 
@@ -3626,8 +3649,12 @@ $($script:DlgResourcesXaml)
         return $true
     }
 
+    # Re-entrant loading overlay: nested Show/Hide calls keep it up until the
+    # outermost Hide, so any backend operation can wrap itself safely.
+    $script:LoadingDepth = 0
     function Show-Loading {
         param([string]$Message = 'Loading…')
+        $script:LoadingDepth++
         $UI.LoadingText.Text = $Message
         $UI.LoadingOverlay.Visibility = 'Visible'
         # Force the dispatcher to render the overlay before the blocking call below
@@ -3638,7 +3665,16 @@ $($script:DlgResourcesXaml)
         )
     }
     function Hide-Loading {
-        $UI.LoadingOverlay.Visibility = 'Collapsed'
+        $script:LoadingDepth = [Math]::Max(0, $script:LoadingDepth - 1)
+        if ($script:LoadingDepth -eq 0) { $UI.LoadingOverlay.Visibility = 'Collapsed' }
+    }
+
+    # Run a backend action behind the loading overlay (always hidden again, even
+    # on error). Returns the action's output.
+    function Invoke-WithLoading {
+        param([string]$Message = 'Working…', [Parameter(Mandatory)] [scriptblock]$Action)
+        Show-Loading -Message $Message
+        try { & $Action } finally { Hide-Loading }
     }
 
     function Load-ViewData {
@@ -3956,9 +3992,8 @@ $($script:DlgResourcesXaml)
     function Lookup-UserRights {
         param([string]$User)
         if (-not (Require-Connected)) { return }
-        Set-Status "Resolving rights for '$User'…"
         try {
-            $matches = Get-RBACUserEffectiveRoles -User $User
+            $matches = Invoke-WithLoading -Message "Resolving rights for '$User'…" -Action { Get-RBACUserEffectiveRoles -User $User }
             $UI.MainGrid.ItemsSource = $matches
             $UI.ItemCount.Text = "$($matches.Count) items"
             if ($matches.Count -gt 0) { Set-Status "$User has $($matches.Count) effective role(s)." 'ok' }
@@ -3970,9 +4005,8 @@ $($script:DlgResourcesXaml)
     function Lookup-Command {
         param([string]$Cmdlet)
         if (-not (Require-Connected)) { return }
-        Set-Status "Searching roles that grant '$Cmdlet'…"
         try {
-            $roles = Get-ManagementRole -Cmdlet $Cmdlet -ErrorAction Stop
+            $roles = Invoke-WithLoading -Message "Searching roles that grant '$Cmdlet'…" -Action { Get-ManagementRole -Cmdlet $Cmdlet -ErrorAction Stop }
             $rows = foreach ($r in $roles) {
                 $isBuiltIn = $r.IsRootRole -or $r.IsEndUserRole
                 [PSCustomObject]@{
@@ -4145,9 +4179,9 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Export CSV' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Export-CurrentView }))
             }
             'Visualizer' {
-                $null = $list.Add((New-ActionButton -Label 'Pick assignment…' -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Pick-VizAssignment }))
-                $null = $list.Add((New-ActionButton -Label '👤 Pick user…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizUser }))
-                $null = $list.Add((New-ActionButton -Label '▣ Pick role…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizRole }))
+                $null = $list.Add((New-ActionButton -Label '⤳ Assignment…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizAssignment }))
+                $null = $list.Add((New-ActionButton -Label '👤 User…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizUser }))
+                $null = $list.Add((New-ActionButton -Label '▣ Role…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizRole }))
                 $null = $list.Add((New-ActionButton -Label '➕ Zoom in'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz 1.2 }))
                 $null = $list.Add((New-ActionButton -Label '➖ Zoom out' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz (1 / 1.2) }))
                 $null = $list.Add((New-ActionButton -Label '⌖ Center'   -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Reset-VizTransform; Render-Visualizer }))
@@ -4964,7 +4998,7 @@ $($script:DlgResourcesXaml)
         $label = switch ($view) { 'Roles' { 'role' } 'RoleGroups' { 'role group' } 'Scopes' { 'scope' } default { 'item' } }
         $name = "$($raw.Name)"
 
-        $related = @(Get-VizRelatedAssignments -View $view -Selected $raw)
+        $related = @(Invoke-WithLoading -Message "Finding assignments for $label '$name'…" -Action { Get-VizRelatedAssignments -View $view -Selected $raw })
         if ($related.Count -eq 0) {
             Set-Status "No role assignment references $label '$name'." 'warn'
             return
@@ -4991,7 +5025,9 @@ $($script:DlgResourcesXaml)
         # assignment…" entry point). Callers from the Roles/Role Groups/Scopes
         # views pass a pre-filtered list of the assignments related to their row.
         if (-not $PSBoundParameters.ContainsKey('Assignments')) {
-            if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
+            if (-not $script:Cache.Assignments) {
+                $script:Cache.Assignments = Invoke-WithLoading -Message 'Loading role assignments…' -Action { Get-RBACRoleAssignments }
+            }
             $Assignments = @($script:Cache.Assignments)
         }
         $assignments = @($Assignments)
@@ -5152,12 +5188,15 @@ $($script:DlgResourcesXaml)
         if ($rows.Count -gt 0) { $list.SelectedIndex = 0 }
 
         if ($dlg.ShowDialog() -eq $true -and $list.SelectedItem) {
-            Set-VizAssignmentSubject -Assignment $list.SelectedItem._raw
-            # Re-render in place when already on the Visualizer; otherwise switch
-            # to it (Switch-View paints the canvas itself).
-            if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer }
-            else { Switch-View -View 'Visualizer' }
-            Set-Status "Visualizing $($list.SelectedItem.Name)." 'ok'
+            $pickedName = "$($list.SelectedItem.Name)"
+            Invoke-WithLoading -Message "Drawing $pickedName…" -Action {
+                Set-VizAssignmentSubject -Assignment $list.SelectedItem._raw
+                # Re-render in place when already on the Visualizer; otherwise switch
+                # to it (Switch-View paints the canvas itself).
+                if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer }
+                else { Switch-View -View 'Visualizer' }
+            }
+            Set-Status "Visualizing $pickedName." 'ok'
         }
     }
 
@@ -5212,34 +5251,40 @@ $($script:DlgResourcesXaml)
     function Pick-VizUser {
         if (-not (Require-Connected)) { return }
         $name = Show-VizInputDialog -Title 'Visualize a user' `
-            -Prompt "Enter a user (UPN or alias). The graph shows every role the account holds - directly or via a role group." `
-            -Placeholder 'user@contoso.com'
+            -Prompt "Enter a user (UPN or alias). The graph shows every role the account holds - directly or via a role group."
         if (-not $name) { return }
         $name = $name.Trim()
         if (-not $name) { return }
-        Set-Status "Resolving rights for '$name'…"
-        try { $roles = @(Get-RBACUserEffectiveRoles -User $name) }
+        try {
+            $roles = @(Invoke-WithLoading -Message "Resolving rights for '$name'…" -Action { Get-RBACUserEffectiveRoles -User $name })
+        }
         catch { Set-Status "Lookup failed: $($_.Exception.Message)" 'error'; return }
         if ($roles.Count -eq 0) {
             Set-Status "No role assignments found for '$name'." 'warn'; return
         }
-        Set-VizUserSubject -Name $name -Roles $roles
-        if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } else { Switch-View -View 'Visualizer' }
+        Invoke-WithLoading -Message 'Drawing user graph…' -Action {
+            Set-VizUserSubject -Name $name -Roles $roles
+            if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } else { Switch-View -View 'Visualizer' }
+        }
         Set-Status "$name has $($roles.Count) effective role(s)." 'ok'
     }
 
     function Pick-VizRole {
         if (-not $script:Cache.Roles) {
             if (-not (Require-Connected)) { return }
-            try { $script:Cache.Roles = @(Get-RBACRoles | ForEach-Object {
-                    [PSCustomObject]@{ Name = $_.Name; RoleType = $_.RoleType; Origin = $_.Origin }
-                }) }
+            try {
+                $script:Cache.Roles = @(Invoke-WithLoading -Message 'Loading roles…' -Action {
+                    Get-RBACRoles | ForEach-Object { [PSCustomObject]@{ Name = $_.Name; RoleType = $_.RoleType; Origin = $_.Origin } }
+                })
+            }
             catch { Set-Status "Could not load roles: $($_.Exception.Message)" 'error'; return }
         }
         $roleName = Show-VizRolePicker -Roles @($script:Cache.Roles)
         if (-not $roleName) { return }
-        Set-VizRoleSubject -Name $roleName
-        if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } else { Switch-View -View 'Visualizer' }
+        Invoke-WithLoading -Message "Drawing role graph for '$roleName'…" -Action {
+            Set-VizRoleSubject -Name $roleName
+            if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } else { Switch-View -View 'Visualizer' }
+        }
         Set-Status "Visualizing role '$roleName'." 'ok'
     }
 
@@ -5391,7 +5436,7 @@ $($script:DlgResourcesXaml)
             $cmdletNames = $script:Cache.RoleCmdlets["$($NodeInfo.CmdletsRole)"]
             if ($null -eq $cmdletNames) {
                 try {
-                    $entries = Get-ManagementRoleEntry -Identity "$($NodeInfo.CmdletsRole)\*" -ErrorAction Stop
+                    $entries = Invoke-WithLoading -Message "Loading cmdlets for '$($NodeInfo.CmdletsRole)'…" -Action { Get-ManagementRoleEntry -Identity "$($NodeInfo.CmdletsRole)\*" -ErrorAction Stop }
                     $cmdletNames = @($entries | ForEach-Object { ("$($_.Name)" -split '\\')[-1] } | Sort-Object -Unique)
                     $script:Cache.RoleCmdlets["$($NodeInfo.CmdletsRole)"] = $cmdletNames
                 }
@@ -5564,49 +5609,52 @@ $($script:DlgResourcesXaml)
         $a = $script:VizAssignment
         if (-not $a) { Set-Status 'Pick an assignment to visualize first.' 'warn'; return }
 
-        $scopeName = Resolve-VizScopeName -Assignment $a -Which Write
-        if (-not $scopeName) {
-            $builtIn = Get-VizScopeDisplay -Assignment $a -Which Write
-            Set-Status "Assignment '$($a.Name)' uses the built-in write scope '$builtIn' - no custom recipient filter to resolve." 'warn'
-            return
-        }
-
-        $scope = $null
-        try { $scope = Get-ManagementScope -Identity $scopeName -ErrorAction Stop }
-        catch { Set-Status "Could not load management scope '$scopeName': $($_.Exception.Message)" 'error'; return }
-
-        $filter = ConvertTo-VizFilterString -RawFilter $scope.RecipientFilter
-        $root   = "$($scope.RecipientRoot)".Trim()
-        if (-not $filter -and -not $root) {
-            Set-Status "Scope '$scopeName' has neither a RecipientFilter nor a RecipientRoot - nothing to resolve." 'warn'
-            return
-        }
-
-        $cap = $script:VizScopeCap
-        Set-Status "Resolving members of scope '$scopeName' (capped at $cap)…"
+        Show-Loading -Message 'Resolving scope members…'
         try {
-            $recipientArgs = @{ ResultSize = $cap; ErrorAction = 'Stop' }
-            if ($filter) { $recipientArgs.RecipientPreviewFilter = $filter }
-            if ($root)   { $recipientArgs.OrganizationalUnit     = $root }
-            $recipients = @(Get-Recipient @recipientArgs |
-                Select-Object Name, RecipientTypeDetails, PrimarySmtpAddress, OrganizationalUnit)
-        }
-        catch { Set-Status "Failed to resolve scope members: $($_.Exception.Message)" 'error'; return }
+            $scopeName = Resolve-VizScopeName -Assignment $a -Which Write
+            if (-not $scopeName) {
+                $builtIn = Get-VizScopeDisplay -Assignment $a -Which Write
+                Set-Status "Assignment '$($a.Name)' uses the built-in write scope '$builtIn' - no custom recipient filter to resolve." 'warn'
+                return
+            }
 
-        $script:VizScopeInfo      = $scope
-        $script:VizScopeTruncated = ($recipients.Count -ge $cap)
-        $script:VizScopeMembers   = $recipients
-        Render-Visualizer
+            $scope = $null
+            try { $scope = Get-ManagementScope -Identity $scopeName -ErrorAction Stop }
+            catch { Set-Status "Could not load management scope '$scopeName': $($_.Exception.Message)" 'error'; return }
 
-        if ($recipients.Count -eq 0) {
-            Set-Status "Scope '$scopeName' currently matches no recipients." 'warn'
+            $filter = ConvertTo-VizFilterString -RawFilter $scope.RecipientFilter
+            $root   = "$($scope.RecipientRoot)".Trim()
+            if (-not $filter -and -not $root) {
+                Set-Status "Scope '$scopeName' has neither a RecipientFilter nor a RecipientRoot - nothing to resolve." 'warn'
+                return
+            }
+
+            $cap = $script:VizScopeCap
+            try {
+                $recipientArgs = @{ ResultSize = $cap; ErrorAction = 'Stop' }
+                if ($filter) { $recipientArgs.RecipientPreviewFilter = $filter }
+                if ($root)   { $recipientArgs.OrganizationalUnit     = $root }
+                $recipients = @(Get-Recipient @recipientArgs |
+                    Select-Object Name, RecipientTypeDetails, PrimarySmtpAddress, OrganizationalUnit)
+            }
+            catch { Set-Status "Failed to resolve scope members: $($_.Exception.Message)" 'error'; return }
+
+            $script:VizScopeInfo      = $scope
+            $script:VizScopeTruncated = ($recipients.Count -ge $cap)
+            $script:VizScopeMembers   = $recipients
+            Render-Visualizer
+
+            if ($recipients.Count -eq 0) {
+                Set-Status "Scope '$scopeName' currently matches no recipients." 'warn'
+            }
+            elseif ($script:VizScopeTruncated) {
+                Set-Status "Showing first $cap member(s) of scope '$scopeName' (truncated; refine the filter to narrow)." 'warn'
+            }
+            else {
+                Set-Status "$($recipients.Count) member(s) in scope '$scopeName'." 'ok'
+            }
         }
-        elseif ($script:VizScopeTruncated) {
-            Set-Status "Showing first $cap member(s) of scope '$scopeName' (truncated; refine the filter to narrow)." 'warn'
-        }
-        else {
-            Set-Status "$($recipients.Count) member(s) in scope '$scopeName'." 'ok'
-        }
+        finally { Hide-Loading }
     }
 
     # ---------------- Visualizer: interactive HTML export ----------------
