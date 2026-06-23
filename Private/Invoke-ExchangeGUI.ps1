@@ -2540,21 +2540,13 @@ $($script:DlgResourcesXaml)
         # if available so it doesn't trigger an extra round-trip - if the cache
         # is empty we load it once and reuse it.
         if ($script:CurrentView -eq 'Scopes' -and $Item.Name) {
-            $assignments = $script:Cache.Assignments
-            if (-not $assignments) {
-                try {
-                    $assignments = @(Get-RBACRoleAssignments)
-                    $script:Cache.Assignments = $assignments
-                }
-                catch { $assignments = @() }
-            }
             $scopeName = "$($Item.Name)"
-            $used = @($assignments | Where-Object {
-                "$($_.CustomRecipientReadScope)"  -eq $scopeName -or
-                "$($_.CustomRecipientWriteScope)" -eq $scopeName -or
-                "$($_.RecipientReadScope)"        -like "*$scopeName*" -or
-                "$($_.RecipientWriteScope)"       -like "*$scopeName*"
-            } | Sort-Object Name)
+            # Reuse the SAME resolution as the Visualizer's "Visualize" so the panel
+            # and the graph agree. Get-VizRelatedAssignments adds the reverse lookup
+            # (Get-ManagementRoleAssignment -CustomRecipientWriteScope) that catches
+            # AutoManaged assignments whose cached CustomRecipientWriteScope is empty
+            # - the cache-only filter used to miss those and show "Used by 0".
+            $used = @(Get-VizRelatedAssignments -View 'Scopes' -Selected $Item | Sort-Object Name)
             $rows.Add([PSCustomObject]@{
                 Key   = "Used by ($($used.Count) assignment$(if ($used.Count -eq 1) { '' } else { 's' }))"
                 Value = ''
@@ -2566,7 +2558,7 @@ $($script:DlgResourcesXaml)
                 foreach ($a in $used) {
                     $where = if    ("$($a.CustomRecipientReadScope)"  -eq $scopeName) { 'read' }
                              elseif ("$($a.CustomRecipientWriteScope)" -eq $scopeName) { 'write' }
-                             else { 'scope' }
+                             else { 'write' }
                     $rows.Add([PSCustomObject]@{
                         Key   = ''
                         Value = "$($a.Name) [$where -> $($a.Role)]"
