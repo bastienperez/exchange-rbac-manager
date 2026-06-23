@@ -22,6 +22,11 @@ Features
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
 
+What's new in 1.6.0
+-------------------
+
+*   **Visualize a user or a role, not just an assignment**: the Visualizer can now graph three subjects. **Pick user…** takes an account (UPN/alias) and draws everything it can do - a hub for the account ringed by every role it holds (directly or via a role group), with the "via" path and scope on each; click a role to list its cmdlets. **Pick role…** draws a role's cmdlets (coloured by verb group) plus a "Used by" column of the assignments/assignees that grant it. Every node keeps the copy-name and "Open in ..." navigation. The original single-assignment view is unchanged.
+
 What's new in 1.5.0
 -------------------
 
@@ -114,7 +119,7 @@ Pick any role assignment and you get:
 
 Buttons:
 
-- **Pick assignment...** - choose any assignment from a searchable, sortable picker
+- **Pick assignment... / Pick user... / Pick role...** - graph a single assignment, an account (every role it holds, directly or via a role group - "what can this account do?"), or a role (its cmdlets + what uses it)
 - **Zoom in / Zoom out / Center** - navigate the canvas
 - **Scope members** - resolve the write scope's recipients and fan them out around the *Scope* node
 - **Export PNG** - saves the canvas to a PNG for tickets, reviews or documentation

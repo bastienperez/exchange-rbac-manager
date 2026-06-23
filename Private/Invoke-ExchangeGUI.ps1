@@ -826,6 +826,12 @@ function Invoke-ExchangeGUI {
     $script:CurrentChips  = @()        # chip labels for the current view
     $script:VizAssignment = $null      # currently visualized assignment
 
+    # The Visualizer can graph different subjects: a single assignment (default),
+    # a user (everything the account can do), or a role (its cmdlets + what uses it).
+    $script:VizKind = 'Assignment'     # 'Assignment' | 'User' | 'Role'
+    $script:VizUser = $null            # @{ Name; Roles = <effective-role rows> }
+    $script:VizRole = $null            # @{ Name }
+
     # Scope members resolved for the current assignment's write scope, drawn as a
     # fan of nodes off the Scope spoke. Null = not resolved yet (button not clicked).
     $script:VizScopeMembers   = $null
@@ -2641,6 +2647,8 @@ $($script:DlgResourcesXaml)
         $script:VizScale.ScaleY  = $newScale
     }
 
+    # Dispatcher: clears the canvas + (re)builds the pan/zoom transform, then draws
+    # the current subject (assignment / user / role).
     function Render-Visualizer {
         $cv = $UI.VizCanvas
         $cv.Children.Clear()
@@ -2656,6 +2664,15 @@ $($script:DlgResourcesXaml)
             $cv.RenderTransform = $tg
         }
 
+        switch ($script:VizKind) {
+            'User' { Render-VizUser }
+            'Role' { Render-VizRole }
+            default { Render-VizAssignment }
+        }
+    }
+
+    function Render-VizAssignment {
+        $cv = $UI.VizCanvas
         $a = $script:VizAssignment
         if (-not $a) { $UI.VizPlaceholderBox.Visibility = 'Visible'; return }
         $UI.VizPlaceholderBox.Visibility = 'Collapsed'
@@ -3253,6 +3270,360 @@ $($script:DlgResourcesXaml)
         }
     }
 
+    # ---------------- Visualizer: shared canvas helpers ----------------
+    # Standalone equivalents of the inline helpers in Render-VizAssignment, so the
+    # user/role renderers draw nodes/edges the same way (drag + click-to-inspect).
+    function Add-VizArrow {
+        param([System.Windows.Controls.Canvas]$Canvas, [double]$TipX, [double]$TipY, [double]$Angle, [string]$Color)
+        $al = 8; $aw = 0.35; $back = $Angle + [Math]::PI
+        $poly = [System.Windows.Shapes.Polygon]::new()
+        $pts  = [System.Windows.Media.PointCollection]::new()
+        $null = $pts.Add([System.Windows.Point]::new($TipX, $TipY))
+        $null = $pts.Add([System.Windows.Point]::new($TipX + $al * [Math]::Cos($back + $aw), $TipY + $al * [Math]::Sin($back + $aw)))
+        $null = $pts.Add([System.Windows.Point]::new($TipX + $al * [Math]::Cos($back - $aw), $TipY + $al * [Math]::Sin($back - $aw)))
+        $poly.Points = $pts; $poly.Fill = $Color
+        $null = $Canvas.Children.Add($poly)
+        return $poly
+    }
+
+    function Set-VizDraggable {
+        param(
+            [System.Windows.Controls.Canvas]$Canvas,
+            [System.Windows.Controls.Border]$Elem,
+            [array]$Links = @(),
+            $NodeInfo = $null
+        )
+        $Elem.Tag = @{
+            Links = $Links; NodeInfo = $NodeInfo; Drag = $false; Moved = $false
+            StartX = 0; StartY = 0; ElemX = 0; ElemY = 0; Canvas = $Canvas
+        }
+        $Elem.Cursor = [System.Windows.Input.Cursors]::SizeAll
+        $Elem.Add_MouseLeftButtonDown({
+            param($s, $e)
+            $t = $s.Tag; $p = $e.GetPosition($t.Canvas)
+            $t.Drag = $true; $t.Moved = $false; $t.StartX = $p.X; $t.StartY = $p.Y
+            $t.ElemX = [System.Windows.Controls.Canvas]::GetLeft($s)
+            $t.ElemY = [System.Windows.Controls.Canvas]::GetTop($s)
+            $null = $s.CaptureMouse(); $e.Handled = $true
+        })
+        $Elem.Add_MouseLeftButtonUp({
+            param($s, $e)
+            $t = $s.Tag; $t.Drag = $false; $s.ReleaseMouseCapture(); $e.Handled = $true
+            if (-not $t.Moved -and $t.NodeInfo -and $script:VizNodeDetailsAction) {
+                & $script:VizNodeDetailsAction $t.NodeInfo
+            }
+        })
+        $Elem.Add_MouseMove({
+            param($s, $e)
+            $t = $s.Tag; if (-not $t.Drag) { return }
+            $p = $e.GetPosition($t.Canvas)
+            if (([Math]::Abs($p.X - $t.StartX) + [Math]::Abs($p.Y - $t.StartY)) -gt 3) { $t.Moved = $true }
+            $newX = $t.ElemX + ($p.X - $t.StartX); $newY = $t.ElemY + ($p.Y - $t.StartY)
+            [System.Windows.Controls.Canvas]::SetLeft($s, $newX)
+            [System.Windows.Controls.Canvas]::SetTop($s, $newY)
+            $needW = $newX + $s.ActualWidth + 60; $needH = $newY + $s.ActualHeight + 60
+            if ($needW -gt $t.Canvas.Width)  { $t.Canvas.Width  = $needW }
+            if ($needH -gt $t.Canvas.Height) { $t.Canvas.Height = $needH }
+            foreach ($lk in $t.Links) {
+                $ax = $newX + $lk.OffsetX; $ay = $newY + $lk.OffsetY
+                if ($lk.End -eq 'start') { $lk.Line.X1 = $ax; $lk.Line.Y1 = $ay }
+                else                     { $lk.Line.X2 = $ax; $lk.Line.Y2 = $ay }
+                if ($lk.Arrow) {
+                    $tipX = $lk.Line.X2; $tipY = $lk.Line.Y2
+                    $angle = [Math]::Atan2($lk.Line.Y2 - $lk.Line.Y1, $lk.Line.X2 - $lk.Line.X1)
+                    $back = $angle + [Math]::PI; $al = 8; $aw = 0.35
+                    $pts = [System.Windows.Media.PointCollection]::new()
+                    $null = $pts.Add([System.Windows.Point]::new($tipX, $tipY))
+                    $null = $pts.Add([System.Windows.Point]::new($tipX + $al * [Math]::Cos($back + $aw), $tipY + $al * [Math]::Sin($back + $aw)))
+                    $null = $pts.Add([System.Windows.Point]::new($tipX + $al * [Math]::Cos($back - $aw), $tipY + $al * [Math]::Sin($back - $aw)))
+                    $lk.Arrow.Points = $pts
+                }
+            }
+        })
+    }
+
+    # ---------------- Visualizer: User subject ----------------
+    # Hub = the account, ring of its effective roles (direct + via role group).
+    # Cmdlets are not drawn - click a role to list them (lazy) in the details panel.
+    function Render-VizUser {
+        $cv = $UI.VizCanvas
+        $u  = $script:VizUser
+        if (-not $u) { $UI.VizPlaceholderBox.Visibility = 'Visible'; return }
+        $UI.VizPlaceholderBox.Visibility = 'Collapsed'
+
+        $baseW = 1000; $baseH = 600; $cx = $baseW / 2; $cy = $baseH / 2; $hubR = 70
+        $roles = @($u.Roles); $count = $roles.Count
+
+        $nodeW = 200; $nodeH = 70
+        $perRing = 12; $baseRadius = 250; $ringSpacing = 160
+        $positions = [System.Collections.Generic.List[hashtable]]::new()
+        $bounds = @{ minX = $cx; maxX = $cx; minY = $cy; maxY = $cy }
+        for ($i = 0; $i -lt $count; $i++) {
+            $ring = [int]($i / $perRing); $posInRing = $i % $perRing
+            $inThisRing = [Math]::Min($perRing, $count - $ring * $perRing)
+            $radius = $baseRadius + $ring * $ringSpacing
+            $angle  = 2 * [Math]::PI * $posInRing / [Math]::Max($inThisRing, 1) - [Math]::PI / 2
+            $ncX = $cx + $radius * [Math]::Cos($angle); $ncY = $cy + $radius * [Math]::Sin($angle)
+            $x = $ncX - $nodeW / 2; $y = $ncY - $nodeH / 2
+            $null = $positions.Add(@{ X = $x; Y = $y; NcX = $ncX; NcY = $ncY })
+            $bounds.minX = [Math]::Min($bounds.minX, $x); $bounds.maxX = [Math]::Max($bounds.maxX, $x + $nodeW)
+            $bounds.minY = [Math]::Min($bounds.minY, $y); $bounds.maxY = [Math]::Max($bounds.maxY, $y + $nodeH)
+        }
+        $bounds.minX = [Math]::Min($bounds.minX, $cx - $hubR); $bounds.maxX = [Math]::Max($bounds.maxX, $cx + $hubR)
+        $bounds.minY = [Math]::Min($bounds.minY, $cy - $hubR); $bounds.maxY = [Math]::Max($bounds.maxY, $cy + $hubR)
+
+        $padding = 60
+        $cv.Width  = [Math]::Max($bounds.maxX - $bounds.minX + $padding * 2, $baseW)
+        $cv.Height = [Math]::Max($bounds.maxY - $bounds.minY + $padding * 2, $baseH)
+        $offsetX = -$bounds.minX + $padding; $offsetY = -$bounds.minY + $padding
+
+        # edges hub -> role
+        $lines = [System.Collections.Generic.List[System.Windows.Shapes.Line]]::new()
+        for ($i = 0; $i -lt $count; $i++) {
+            $pos = $positions[$i]
+            $line = [System.Windows.Shapes.Line]::new()
+            $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY
+            $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
+            $line.Stroke = '#605E5C'; $line.StrokeThickness = 1.2
+            $null = $cv.Children.Add($line); $null = $lines.Add($line)
+        }
+
+        # hub (account)
+        $hub = [System.Windows.Controls.Border]::new()
+        $hub.Width = $hubR * 2; $hub.Height = $hubR * 2; $hub.CornerRadius = "$hubR"
+        $hub.Background = '#FFF4CE'; $hub.BorderBrush = '#B28704'; $hub.BorderThickness = 2
+        $sp = [System.Windows.Controls.StackPanel]::new(); $sp.HorizontalAlignment = 'Center'; $sp.VerticalAlignment = 'Center'
+        $t1 = [System.Windows.Controls.TextBlock]::new(); $t1.Text = 'ACCOUNT'; $t1.FontFamily = 'Consolas'; $t1.FontSize = 9; $t1.Foreground = '#605E5C'; $t1.HorizontalAlignment = 'Center'
+        $t2 = [System.Windows.Controls.TextBlock]::new(); $t2.Text = $u.Name; $t2.FontWeight = 'SemiBold'; $t2.FontSize = 11; $t2.HorizontalAlignment = 'Center'; $t2.TextWrapping = 'Wrap'; $t2.TextAlignment = 'Center'; $t2.MaxWidth = $hubR * 2 - 16
+        $null = $sp.Children.Add($t1); $null = $sp.Children.Add($t2); $hub.Child = $sp
+        [System.Windows.Controls.Canvas]::SetLeft($hub, $cx - $hubR + $offsetX)
+        [System.Windows.Controls.Canvas]::SetTop($hub,  $cy - $hubR + $offsetY)
+        $null = $cv.Children.Add($hub)
+        $script:VizHubCanvasX = $cx + $offsetX; $script:VizHubCanvasY = $cy + $offsetY
+        $hubLinks = [System.Collections.Generic.List[hashtable]]::new()
+        foreach ($l in $lines) { $null = $hubLinks.Add(@{ Line = $l; End = 'start'; OffsetX = $hubR; OffsetY = $hubR }) }
+        $hubInfo = @{
+            Title = "$($u.Name)"; Badge = 'ACCOUNT'
+            Nav   = @{ View='UserRights'; Name="$($u.Name)"; Label='Look up in User Rights' }
+            Rows  = @([pscustomobject]@{ Key='Effective roles'; Value="$count" })
+        }
+        Set-VizDraggable -Canvas $cv -Elem $hub -Links $hubLinks -NodeInfo $hubInfo
+
+        # role nodes
+        for ($i = 0; $i -lt $count; $i++) {
+            $pos = $positions[$i]; $r = $roles[$i]
+            $node = [System.Windows.Controls.Border]::new()
+            $node.Width = $nodeW; $node.CornerRadius = '4'; $node.Background = '#DFF6DD'
+            $node.BorderBrush = '#558B2F'; $node.BorderThickness = 1; $node.Padding = '10,6'
+            $st = [System.Windows.Controls.StackPanel]::new()
+            $lbl = [System.Windows.Controls.TextBlock]::new(); $lbl.Text = "$($r.Via)"; $lbl.FontFamily = 'Consolas'; $lbl.FontSize = 9; $lbl.Foreground = '#605E5C'; $lbl.TextTrimming = 'CharacterEllipsis'
+            $nm  = [System.Windows.Controls.TextBlock]::new(); $nm.Text = "$($r.Role)"; $nm.FontSize = 13; $nm.FontWeight = 'SemiBold'; $nm.TextWrapping = 'Wrap'
+            $sc  = [System.Windows.Controls.TextBlock]::new(); $sc.Text = "Scope: $($r.WriteScope)"; $sc.FontFamily = 'Consolas'; $sc.FontSize = 9; $sc.Foreground = '#605E5C'; $sc.TextTrimming = 'CharacterEllipsis'
+            $null = $st.Children.Add($lbl); $null = $st.Children.Add($nm); $null = $st.Children.Add($sc)
+            $node.Child = $st
+            $node.ToolTip = "$($r.Role)`n$($r.Via)`nWrite: $($r.WriteScope)`nRead: $($r.ReadScope)"
+            [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX)
+            [System.Windows.Controls.Canvas]::SetTop($node,  $pos.Y + $offsetY)
+            $null = $cv.Children.Add($node)
+            $links = [System.Collections.Generic.List[hashtable]]::new()
+            $null = $links.Add(@{ Line = $lines[$i]; End = 'end'; OffsetX = $nodeW / 2; OffsetY = $nodeH / 2 })
+            $info = @{
+                Title = "$($r.Role)"; Badge = 'ROLE'; CmdletsRole = "$($r.Role)"
+                Nav   = @{ View='Roles'; Name="$($r.Role)"; Label='Open in Roles' }
+                Rows  = @(
+                    [pscustomobject]@{ Key='Granted';     Value="$($r.Via)" }
+                    [pscustomobject]@{ Key='Write scope'; Value="$($r.WriteScope)" }
+                    [pscustomobject]@{ Key='Read scope';  Value="$($r.ReadScope)" }
+                )
+            }
+            Set-VizDraggable -Canvas $cv -Elem $node -Links $links -NodeInfo $info
+        }
+    }
+
+    # ---------------- Visualizer: Role subject ----------------
+    # Hub = the role; its cmdlets fan around it (coloured by verb group); a left
+    # column lists the assignments/assignees that use the role ("Used by").
+    function Render-VizRole {
+        $cv = $UI.VizCanvas
+        $role = $script:VizRole
+        if (-not $role) { $UI.VizPlaceholderBox.Visibility = 'Visible'; return }
+        $UI.VizPlaceholderBox.Visibility = 'Collapsed'
+        $roleName = "$($role.Name)"
+
+        $baseW = 1000; $baseH = 600; $cx = $baseW / 2; $cy = $baseH / 2; $hubR = 80
+        $verbPalettes = $script:VizVerbPalettes
+        $entries = Get-VizClassifiedEntries -Role $roleName
+
+        # -- cmdlet fan (full-circle rings around the hub) -----------------
+        $cmdletNodeW = 140; $cmdletNodeH = 22; $baseRadius = 150; $ringSpacing = 72; $itemsPerRing = 16
+        $cmdletPositions = [System.Collections.Generic.List[hashtable]]::new()
+        $bounds = @{ minX = $cx; maxX = $cx; minY = $cy; maxY = $cy }
+        for ($i = 0; $i -lt $entries.Count; $i++) {
+            $ring = [int]($i / $itemsPerRing); $posInRing = $i % $itemsPerRing
+            $radius = $baseRadius + $ring * $ringSpacing
+            $angle  = 2 * [Math]::PI * $posInRing / $itemsPerRing
+            $ncX = $cx + $radius * [Math]::Cos($angle); $ncY = $cy + $radius * [Math]::Sin($angle)
+            $x = $ncX - $cmdletNodeW / 2; $y = $ncY - $cmdletNodeH / 2
+            $null = $cmdletPositions.Add(@{ X = $x; Y = $y; NcX = $ncX; NcY = $ncY; Angle = $angle })
+            $bounds.minX = [Math]::Min($bounds.minX, $x); $bounds.maxX = [Math]::Max($bounds.maxX, $x + $cmdletNodeW)
+            $bounds.minY = [Math]::Min($bounds.minY, $y); $bounds.maxY = [Math]::Max($bounds.maxY, $y + $cmdletNodeH)
+        }
+        $maxRing = if ($entries.Count -gt 0) { [int](($entries.Count - 1) / $itemsPerRing) } else { 0 }
+        $maxRadius = $baseRadius + $maxRing * $ringSpacing
+
+        # -- "Used by" assignees (left column, clear of the fan) -----------
+        if (-not $script:Cache.Assignments) {
+            try { $script:Cache.Assignments = @(Get-RBACRoleAssignments) } catch { $script:Cache.Assignments = @() }
+        }
+        $usedBy = @(@($script:Cache.Assignments) | Where-Object { "$($_.Role)" -eq $roleName })
+        $asgNodeW = 200; $asgNodeH = 54; $asgGap = 14
+        $asgX = $cx - $maxRadius - 280
+        $asgPositions = [System.Collections.Generic.List[hashtable]]::new()
+        $asgCount = $usedBy.Count
+        $asgTotalH = $asgCount * $asgNodeH + [Math]::Max(0, $asgCount - 1) * $asgGap
+        $asgStartY = $cy - $asgTotalH / 2
+        for ($i = 0; $i -lt $asgCount; $i++) {
+            $y = $asgStartY + $i * ($asgNodeH + $asgGap)
+            $null = $asgPositions.Add(@{ X = $asgX; Y = $y; NcX = $asgX + $asgNodeW / 2; NcY = $y + $asgNodeH / 2 })
+            $bounds.minX = [Math]::Min($bounds.minX, $asgX); $bounds.maxX = [Math]::Max($bounds.maxX, $asgX + $asgNodeW)
+            $bounds.minY = [Math]::Min($bounds.minY, $y); $bounds.maxY = [Math]::Max($bounds.maxY, $y + $asgNodeH)
+        }
+        $bounds.minX = [Math]::Min($bounds.minX, $cx - $hubR); $bounds.maxX = [Math]::Max($bounds.maxX, $cx + $hubR)
+        $bounds.minY = [Math]::Min($bounds.minY, $cy - $hubR); $bounds.maxY = [Math]::Max($bounds.maxY, $cy + $hubR)
+
+        $padding = 50
+        $cv.Width  = [Math]::Max($bounds.maxX - $bounds.minX + $padding * 2, $baseW)
+        $cv.Height = [Math]::Max($bounds.maxY - $bounds.minY + $padding * 2, $baseH)
+        $offsetX = -$bounds.minX + $padding; $offsetY = -$bounds.minY + $padding
+
+        $dashes = [System.Windows.Media.DoubleCollection]::new(); $null = $dashes.Add(4.0); $null = $dashes.Add(2.0)
+
+        # cmdlet edges
+        $cmdletLines = [System.Collections.Generic.List[System.Windows.Shapes.Line]]::new()
+        $cmdletArrows = [System.Collections.Generic.List[System.Windows.Shapes.Polygon]]::new()
+        for ($i = 0; $i -lt $entries.Count; $i++) {
+            $pos = $cmdletPositions[$i]
+            $line = [System.Windows.Shapes.Line]::new()
+            $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY; $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
+            $line.Stroke = '#558B2F'; $line.StrokeThickness = 1.2; $line.StrokeDashArray = $dashes
+            $null = $cv.Children.Add($line)
+            $arrow = Add-VizArrow -Canvas $cv -TipX ($pos.NcX + $offsetX) -TipY ($pos.NcY + $offsetY) -Angle $pos.Angle -Color '#558B2F'
+            $null = $cmdletLines.Add($line); $null = $cmdletArrows.Add($arrow)
+        }
+        # assignee edges
+        $asgLines = [System.Collections.Generic.List[System.Windows.Shapes.Line]]::new()
+        $asgArrows = [System.Collections.Generic.List[System.Windows.Shapes.Polygon]]::new()
+        for ($i = 0; $i -lt $asgCount; $i++) {
+            $pos = $asgPositions[$i]
+            $line = [System.Windows.Shapes.Line]::new()
+            $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY; $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
+            $line.Stroke = '#B28704'; $line.StrokeThickness = 1.0; $line.StrokeDashArray = $dashes
+            $null = $cv.Children.Add($line)
+            $ang = [Math]::Atan2($pos.NcY - $cy, $pos.NcX - $cx)
+            $arrow = Add-VizArrow -Canvas $cv -TipX ($pos.NcX + $offsetX) -TipY ($pos.NcY + $offsetY) -Angle $ang -Color '#B28704'
+            $null = $asgLines.Add($line); $null = $asgArrows.Add($arrow)
+        }
+
+        # hub (role)
+        $hub = [System.Windows.Controls.Border]::new()
+        $hub.Width = $hubR * 2; $hub.Height = $hubR * 2; $hub.CornerRadius = "$hubR"
+        $hub.Background = '#DFF6DD'; $hub.BorderBrush = '#558B2F'; $hub.BorderThickness = 2
+        $sp = [System.Windows.Controls.StackPanel]::new(); $sp.HorizontalAlignment = 'Center'; $sp.VerticalAlignment = 'Center'
+        $t1 = [System.Windows.Controls.TextBlock]::new(); $t1.Text = 'ROLE'; $t1.FontFamily = 'Consolas'; $t1.FontSize = 9; $t1.Foreground = '#605E5C'; $t1.HorizontalAlignment = 'Center'
+        $t2 = [System.Windows.Controls.TextBlock]::new(); $t2.Text = $roleName; $t2.FontWeight = 'SemiBold'; $t2.FontSize = 11; $t2.HorizontalAlignment = 'Center'; $t2.TextWrapping = 'Wrap'; $t2.TextAlignment = 'Center'; $t2.MaxWidth = $hubR * 2 - 16
+        $null = $sp.Children.Add($t1); $null = $sp.Children.Add($t2); $hub.Child = $sp
+        [System.Windows.Controls.Canvas]::SetLeft($hub, $cx - $hubR + $offsetX)
+        [System.Windows.Controls.Canvas]::SetTop($hub,  $cy - $hubR + $offsetY)
+        $null = $cv.Children.Add($hub)
+        $script:VizHubCanvasX = $cx + $offsetX; $script:VizHubCanvasY = $cy + $offsetY
+        $hubLinks = [System.Collections.Generic.List[hashtable]]::new()
+        for ($i = 0; $i -lt $cmdletLines.Count; $i++) { $null = $hubLinks.Add(@{ Line = $cmdletLines[$i]; End = 'start'; OffsetX = $hubR; OffsetY = $hubR; Arrow = $cmdletArrows[$i] }) }
+        for ($i = 0; $i -lt $asgLines.Count; $i++)    { $null = $hubLinks.Add(@{ Line = $asgLines[$i];    End = 'start'; OffsetX = $hubR; OffsetY = $hubR; Arrow = $asgArrows[$i] }) }
+        $hubInfo = @{
+            Title = $roleName; Badge = 'ROLE'; CmdletsRole = $roleName
+            Nav   = @{ View='Roles'; Name=$roleName; Label='Open in Roles' }
+            Rows  = @(
+                [pscustomobject]@{ Key='Cmdlets'; Value="$($entries.Count)" }
+                [pscustomobject]@{ Key='Used by'; Value="$asgCount assignment(s)" }
+            )
+        }
+        Set-VizDraggable -Canvas $cv -Elem $hub -Links $hubLinks -NodeInfo $hubInfo
+
+        # cmdlet nodes
+        for ($i = 0; $i -lt $entries.Count; $i++) {
+            $pos = $cmdletPositions[$i]; $entry = $entries[$i]; $pal = $verbPalettes[$entry.CmdletGroup]
+            $node = [System.Windows.Controls.Border]::new()
+            $node.Width = $cmdletNodeW; $node.CornerRadius = '3'; $node.Background = $pal.Bg; $node.BorderBrush = $pal.Border; $node.BorderThickness = 1; $node.Padding = '5,2'
+            $tb = [System.Windows.Controls.TextBlock]::new(); $tb.Text = "$($entry.CmdletShortName)"; $tb.FontSize = 9; $tb.FontWeight = 'SemiBold'; $tb.TextTrimming = 'CharacterEllipsis'; $tb.Foreground = $pal.Fg
+            $tb.ToolTip = "$($entry.Name) [$($entry.CmdletGroup) - $($entry.CmdletVerb)]"; $node.Child = $tb
+            [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX); [System.Windows.Controls.Canvas]::SetTop($node, $pos.Y + $offsetY)
+            $null = $cv.Children.Add($node)
+            $links = [System.Collections.Generic.List[hashtable]]::new()
+            $null = $links.Add(@{ Line = $cmdletLines[$i]; End = 'end'; OffsetX = $cmdletNodeW / 2; OffsetY = $cmdletNodeH / 2; Arrow = $cmdletArrows[$i] })
+            $info = @{
+                Title = "$($entry.CmdletShortName)"; Badge = 'CMDLET'
+                Nav   = @{ View='Commands'; Name="$($entry.CmdletShortName)"; Label='Look up in Command Lookup' }
+                Rows  = @(
+                    [pscustomobject]@{ Key='Full name'; Value="$($entry.Name)" }
+                    [pscustomobject]@{ Key='Group';     Value="$($entry.CmdletGroup)" }
+                    [pscustomobject]@{ Key='Verb';      Value="$($entry.CmdletVerb)" }
+                )
+            }
+            Set-VizDraggable -Canvas $cv -Elem $node -Links $links -NodeInfo $info
+        }
+
+        # "Used by" assignee nodes
+        for ($i = 0; $i -lt $asgCount; $i++) {
+            $pos = $asgPositions[$i]; $asg = $usedBy[$i]
+            $node = [System.Windows.Controls.Border]::new()
+            $node.Width = $asgNodeW; $node.CornerRadius = '4'; $node.Background = '#FFF4CE'; $node.BorderBrush = '#B28704'; $node.BorderThickness = 1; $node.Padding = '8,5'
+            $st = [System.Windows.Controls.StackPanel]::new()
+            $lbl = [System.Windows.Controls.TextBlock]::new(); $lbl.Text = "Used by · $($asg.RoleAssigneeType)"; $lbl.FontFamily = 'Consolas'; $lbl.FontSize = 9; $lbl.Foreground = '#605E5C'; $lbl.TextTrimming = 'CharacterEllipsis'
+            $nm = [System.Windows.Controls.TextBlock]::new(); $nm.Text = "$($asg.RoleAssignee)"; $nm.FontSize = 12; $nm.FontWeight = 'SemiBold'; $nm.TextWrapping = 'Wrap'
+            $null = $st.Children.Add($lbl); $null = $st.Children.Add($nm); $node.Child = $st
+            $node.ToolTip = "Assignment: $($asg.Name)`nAssignee: $($asg.RoleAssignee) ($($asg.RoleAssigneeType))"
+            [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX); [System.Windows.Controls.Canvas]::SetTop($node, $pos.Y + $offsetY)
+            $null = $cv.Children.Add($node)
+            $links = [System.Collections.Generic.List[hashtable]]::new()
+            $null = $links.Add(@{ Line = $asgLines[$i]; End = 'end'; OffsetX = $asgNodeW / 2; OffsetY = $asgNodeH / 2; Arrow = $asgArrows[$i] })
+            $navView = if ("$($asg.RoleAssigneeType)" -in @('RoleGroup','User','SecurityGroup')) { 'UserRights' } else { 'Assignments' }
+            $navName = if ($navView -eq 'UserRights') { "$($asg.RoleAssignee)" } else { "$($asg.Name)" }
+            $navLabel = if ($navView -eq 'UserRights') { 'Look up in User Rights' } else { 'Open in Role Assignments' }
+            $info = @{
+                Title = "$($asg.RoleAssignee)"; Badge = 'ASSIGNEE'
+                Nav   = @{ View=$navView; Name=$navName; Label=$navLabel }
+                Rows  = @(
+                    [pscustomobject]@{ Key='Assignment';  Value="$($asg.Name)" }
+                    [pscustomobject]@{ Key='Type';        Value="$($asg.RoleAssigneeType)" }
+                    [pscustomobject]@{ Key='Write scope'; Value="$($asg.RecipientWriteScope)" }
+                )
+            }
+            Set-VizDraggable -Canvas $cv -Elem $node -Links $links -NodeInfo $info
+        }
+
+        # legend (cmdlets by group)
+        if ($entries.Count -gt 0) {
+            $groupCounts = @{}
+            foreach ($e in $entries) { if (-not $groupCounts.ContainsKey($e.CmdletGroup)) { $groupCounts[$e.CmdletGroup] = 0 }; $groupCounts[$e.CmdletGroup]++ }
+            $legend = [System.Windows.Controls.Border]::new()
+            $legend.Background = '#F3F2F1'; $legend.BorderBrush = '#C8C6C4'; $legend.BorderThickness = 1; $legend.CornerRadius = '4'; $legend.Padding = '8,5'
+            $legendPanel = [System.Windows.Controls.StackPanel]::new(); $legendPanel.Orientation = 'Horizontal'
+            $title = [System.Windows.Controls.TextBlock]::new(); $title.Text = 'CMDLETS BY GROUP'; $title.FontFamily = 'Consolas'; $title.FontSize = 9; $title.Foreground = '#605E5C'; $title.VerticalAlignment = 'Center'; $title.Margin = '0,0,10,0'
+            $null = $legendPanel.Children.Add($title)
+            foreach ($g in @('Read','Modify','Destructive','Create','Other')) {
+                if (-not $groupCounts.ContainsKey($g)) { continue }
+                $p = $verbPalettes[$g]
+                $sw = [System.Windows.Shapes.Rectangle]::new(); $sw.Width = 12; $sw.Height = 12; $sw.Fill = $p.Bg; $sw.Stroke = $p.Border; $sw.StrokeThickness = 1; $sw.Margin = '6,0,4,0'; $sw.VerticalAlignment = 'Center'
+                $null = $legendPanel.Children.Add($sw)
+                $lbl = [System.Windows.Controls.TextBlock]::new(); $lbl.Text = "$g ($($groupCounts[$g]))"; $lbl.FontSize = 11; $lbl.Foreground = '#201F1E'; $lbl.VerticalAlignment = 'Center'
+                $null = $legendPanel.Children.Add($lbl)
+            }
+            $legend.Child = $legendPanel
+            [System.Windows.Controls.Canvas]::SetLeft($legend, 12); [System.Windows.Controls.Canvas]::SetTop($legend, 12)
+            $null = $cv.Children.Add($legend)
+        }
+    }
+
     # ---------------- Data loaders ----------------
     function Require-Connected {
         if (-not (Test-RBACExchangeConnection)) {
@@ -3378,12 +3749,19 @@ $($script:DlgResourcesXaml)
                         Set-Status 'Connect first to load assignments.' 'warn'; return
                     }
                     if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
-                    if (@($script:Cache.Assignments).Count -gt 0 -and -not $script:VizAssignment) {
-                        $script:VizAssignment = $script:Cache.Assignments[0]
+                    # Default to the first assignment only when no subject is set yet;
+                    # a user/role subject (picked earlier) keeps its own view.
+                    if ($script:VizKind -eq 'Assignment' -and -not $script:VizAssignment -and @($script:Cache.Assignments).Count -gt 0) {
+                        Set-VizAssignmentSubject -Assignment $script:Cache.Assignments[0]
                     }
                     $UI.ItemCount.Text = "$(@($script:Cache.Assignments).Count) assignments"
                     Render-Visualizer
-                    Set-Status "Visualizing $($script:VizAssignment.Name)." 'ok'
+                    $subjectLabel = switch ($script:VizKind) {
+                        'User' { "user $($script:VizUser.Name)" }
+                        'Role' { "role $($script:VizRole.Name)" }
+                        default { "$($script:VizAssignment.Name)" }
+                    }
+                    Set-Status "Visualizing $subjectLabel." 'ok'
                 }
                 'Audit' {
                     Load-Audit -Days 7
@@ -3551,35 +3929,44 @@ $($script:DlgResourcesXaml)
     # Backward-compat alias kept for existing event wiring
     function Apply-Search { Apply-Filters }
 
+    # Compute a user's effective role assignments (direct + via role-group membership).
+    # Returns rows { User, Role, Via, ReadScope, WriteScope, _raw }. Shared by the
+    # User Rights grid and the Visualizer's user subject.
+    function Get-RBACUserEffectiveRoles {
+        param([string]$User)
+        if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
+        $matches = [System.Collections.Generic.List[pscustomobject]]::new()
+        foreach ($asg in $script:Cache.Assignments) {
+            $hit = $false; $via = ''
+            if ($asg.RoleAssignee -like "*$User*") { $hit = $true; $via = 'Direct or named' }
+            if (-not $hit -and $asg.RoleAssigneeType -eq 'RoleGroup') {
+                try {
+                    $g = Get-RoleGroup -Identity $asg.RoleAssignee -ErrorAction SilentlyContinue
+                    if ($g -and ($g.Members | Where-Object { "$_" -like "*$User*" })) {
+                        $hit = $true; $via = "via $($asg.RoleAssignee)"
+                    }
+                } catch { }
+            }
+            if ($hit) {
+                $null = $matches.Add([PSCustomObject]@{
+                    User       = $User
+                    Role       = $asg.Role
+                    Via        = $via
+                    ReadScope  = $asg.RecipientReadScope
+                    WriteScope = $asg.RecipientWriteScope
+                    _raw       = $asg
+                })
+            }
+        }
+        return $matches
+    }
+
     function Lookup-UserRights {
         param([string]$User)
         if (-not (Require-Connected)) { return }
         Set-Status "Resolving rights for '$User'…"
         try {
-            if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
-            $matches = [System.Collections.Generic.List[pscustomobject]]::new()
-            foreach ($asg in $script:Cache.Assignments) {
-                $hit = $false
-                if ($asg.RoleAssignee -like "*$User*") { $hit = $true; $via = 'Direct or named' }
-                if (-not $hit -and $asg.RoleAssigneeType -eq 'RoleGroup') {
-                    try {
-                        $g = Get-RoleGroup -Identity $asg.RoleAssignee -ErrorAction SilentlyContinue
-                        if ($g -and ($g.Members | Where-Object { "$_" -like "*$User*" })) {
-                            $hit = $true; $via = "via $($asg.RoleAssignee)"
-                        }
-                    } catch { }
-                }
-                if ($hit) {
-                    $null = $matches.Add([PSCustomObject]@{
-                        User       = $User
-                        Role       = $asg.Role
-                        Via        = $via
-                        ReadScope  = $asg.RecipientReadScope
-                        WriteScope = $asg.RecipientWriteScope
-                        _raw       = $asg
-                    })
-                }
-            }
+            $matches = Get-RBACUserEffectiveRoles -User $User
             $UI.MainGrid.ItemsSource = $matches
             $UI.ItemCount.Text = "$($matches.Count) items"
             if ($matches.Count -gt 0) { Set-Status "$User has $($matches.Count) effective role(s)." 'ok' }
@@ -3767,6 +4154,8 @@ $($script:DlgResourcesXaml)
             }
             'Visualizer' {
                 $null = $list.Add((New-ActionButton -Label 'Pick assignment…' -Style 'PrimaryBtn' -Kind 'Primary' -OnClick { Pick-VizAssignment }))
+                $null = $list.Add((New-ActionButton -Label '👤 Pick user…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizUser }))
+                $null = $list.Add((New-ActionButton -Label '▣ Pick role…' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Pick-VizRole }))
                 $null = $list.Add((New-ActionButton -Label '➕ Zoom in'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz 1.2 }))
                 $null = $list.Add((New-ActionButton -Label '➖ Zoom out' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz (1 / 1.2) }))
                 $null = $list.Add((New-ActionButton -Label '⌖ Center'   -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Reset-VizTransform; Render-Visualizer }))
@@ -4514,8 +4903,7 @@ $($script:DlgResourcesXaml)
         if (-not $a.Role -or -not $a.RoleAssignee) {
             Set-Status 'Selected row is not an assignment.' 'warn'; return
         }
-        $script:VizAssignment = $a
-        Reset-VizScopeMembers   # different assignment -> drop the previous scope fan
+        Set-VizAssignmentSubject -Assignment $a
         Switch-View -View 'Visualizer'
     }
 
@@ -4590,8 +4978,7 @@ $($script:DlgResourcesXaml)
             return
         }
         if ($related.Count -eq 1) {
-            $script:VizAssignment = $related[0]
-            Reset-VizScopeMembers
+            Set-VizAssignmentSubject -Assignment $related[0]
             Switch-View -View 'Visualizer'
             Set-Status "Visualizing $($related[0].Name)." 'ok'
             return
@@ -4773,8 +5160,7 @@ $($script:DlgResourcesXaml)
         if ($rows.Count -gt 0) { $list.SelectedIndex = 0 }
 
         if ($dlg.ShowDialog() -eq $true -and $list.SelectedItem) {
-            $script:VizAssignment = $list.SelectedItem._raw
-            Reset-VizScopeMembers   # different assignment -> drop the previous scope fan
+            Set-VizAssignmentSubject -Assignment $list.SelectedItem._raw
             # Re-render in place when already on the Visualizer; otherwise switch
             # to it (Switch-View paints the canvas itself).
             if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer }
@@ -4809,6 +5195,185 @@ $($script:DlgResourcesXaml)
         $script:VizScopeTruncated = $false
     }
 
+    # Set the Visualizer subject (one of assignment / user / role), clearing the
+    # others and the scope-member fan so a re-render starts clean.
+    function Set-VizAssignmentSubject {
+        param($Assignment)
+        $script:VizKind = 'Assignment'; $script:VizAssignment = $Assignment
+        $script:VizUser = $null; $script:VizRole = $null
+        Reset-VizScopeMembers
+    }
+    function Set-VizUserSubject {
+        param([string]$Name, $Roles)
+        $script:VizKind = 'User'; $script:VizUser = @{ Name = $Name; Roles = @($Roles) }
+        $script:VizAssignment = $null; $script:VizRole = $null
+        Reset-VizScopeMembers
+    }
+    function Set-VizRoleSubject {
+        param([string]$Name)
+        $script:VizKind = 'Role'; $script:VizRole = @{ Name = $Name }
+        $script:VizAssignment = $null; $script:VizUser = $null
+        Reset-VizScopeMembers
+    }
+
+    # ---------------- Visualizer: user / role pickers ----------------
+    function Pick-VizUser {
+        if (-not (Require-Connected)) { return }
+        $name = Show-VizInputDialog -Title 'Visualize a user' `
+            -Prompt "Enter a user (UPN or alias). The graph shows every role the account holds - directly or via a role group." `
+            -Placeholder 'user@contoso.com'
+        if (-not $name) { return }
+        $name = $name.Trim()
+        if (-not $name) { return }
+        Set-Status "Resolving rights for '$name'…"
+        try { $roles = @(Get-RBACUserEffectiveRoles -User $name) }
+        catch { Set-Status "Lookup failed: $($_.Exception.Message)" 'error'; return }
+        if ($roles.Count -eq 0) {
+            Set-Status "No role assignments found for '$name'." 'warn'; return
+        }
+        Set-VizUserSubject -Name $name -Roles $roles
+        if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } else { Switch-View -View 'Visualizer' }
+        Set-Status "$name has $($roles.Count) effective role(s)." 'ok'
+    }
+
+    function Pick-VizRole {
+        if (-not $script:Cache.Roles) {
+            if (-not (Require-Connected)) { return }
+            try { $script:Cache.Roles = @(Get-RBACRoles | ForEach-Object {
+                    [PSCustomObject]@{ Name = $_.Name; RoleType = $_.RoleType; Origin = $_.Origin }
+                }) }
+            catch { Set-Status "Could not load roles: $($_.Exception.Message)" 'error'; return }
+        }
+        $roleName = Show-VizRolePicker -Roles @($script:Cache.Roles)
+        if (-not $roleName) { return }
+        Set-VizRoleSubject -Name $roleName
+        if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } else { Switch-View -View 'Visualizer' }
+        Set-Status "Visualizing role '$roleName'." 'ok'
+    }
+
+    # Minimal single-line input dialog (styled like the other dialogs). Returns the
+    # typed text, or $null on cancel.
+    function Show-VizInputDialog {
+        param([string]$Title, [string]$Prompt)
+        $esc = { param([string]$s) ($s -replace '&','&amp;' -replace '<','&lt;' -replace '>','&gt;' -replace '"','&quot;') }
+        $st = & $esc $Title; $sp = & $esc $Prompt
+        $xaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="$st" Width="460" SizeToContent="Height" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ResizeMode="NoResize" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock Text="$st" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="$sp" FontSize="12" Foreground="#605E5C" Margin="0,2,0,0" TextWrapping="Wrap"/>
+      </StackPanel>
+    </Border>
+    <Border Grid.Row="1" Padding="20,16">
+      <TextBox x:Name="Input" Style="{StaticResource DlgTextBox}"/>
+    </Border>
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel"    Style="{StaticResource DlgBtn}" Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOK"     Content="Visualize" Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
+"@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($xaml))
+        $dlg = [System.Windows.Markup.XamlReader]::Load($reader); $dlg.Owner = $window
+        $box = $dlg.FindName('Input')
+        $dlg.FindName('BtnOK').Add_Click({ $dlg.DialogResult = $true; $dlg.Close() })
+        $dlg.FindName('BtnCancel').Add_Click({ $dlg.DialogResult = $false; $dlg.Close() })
+        $box.Focus() | Out-Null
+        if ($dlg.ShowDialog() -eq $true) { return [string]$box.Text }
+        return $null
+    }
+
+    # Searchable role picker (Name / Type / Origin). Returns the chosen role name.
+    function Show-VizRolePicker {
+        param([array]$Roles)
+        if (-not $Roles -or $Roles.Count -eq 0) { Set-Status 'No roles to pick from.' 'warn'; return $null }
+        $dlgXaml = @"
+<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pick a role to visualize" Width="720" Height="560" WindowStartupLocation="CenterOwner"
+        FontFamily="Segoe UI" Background="White" ShowInTaskbar="False">
+$($script:DlgResourcesXaml)
+  <Grid>
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <Border Grid.Row="0" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,0,0,1" Padding="20,16">
+      <StackPanel>
+        <TextBlock Text="Pick a management role" FontSize="16" FontWeight="SemiBold" Foreground="#201F1E"/>
+        <TextBlock Text="The graph shows the role's cmdlets and which assignments/assignees use it."
+                   FontSize="12" Foreground="#605E5C" Margin="0,2,0,0"/>
+      </StackPanel>
+    </Border>
+    <Border Grid.Row="1" Padding="20,16">
+      <Grid>
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+        <Border Grid.Row="0" Margin="0,0,0,10" Padding="10,4" Background="White" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="4" Height="34">
+          <Grid>
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="⌕" Margin="2,0,8,0" Foreground="#605E5C" VerticalAlignment="Center"/>
+            <TextBox x:Name="FilterBox" Grid.Column="1" BorderThickness="0" VerticalContentAlignment="Center" Background="Transparent" FontSize="13"/>
+            <Border Grid.Column="2" CornerRadius="10" Padding="8,2" Background="#EFEDEB" VerticalAlignment="Center">
+              <TextBlock x:Name="CountText" Foreground="#605E5C" FontFamily="Consolas" FontSize="11"/>
+            </Border>
+          </Grid>
+        </Border>
+        <ListView x:Name="List" Grid.Row="1" Background="White" BorderBrush="#C8C6C4" BorderThickness="1" SelectionMode="Single" FontSize="12">
+          <ListView.View>
+            <GridView>
+              <GridViewColumn Header="Role"   Width="360" DisplayMemberBinding="{Binding Name}"/>
+              <GridViewColumn Header="Type"   Width="150" DisplayMemberBinding="{Binding RoleType}"/>
+              <GridViewColumn Header="Origin" Width="120" DisplayMemberBinding="{Binding Origin}"/>
+            </GridView>
+          </ListView.View>
+        </ListView>
+      </Grid>
+    </Border>
+    <Border Grid.Row="2" Background="#F8F8F8" BorderBrush="#E1DFDD" BorderThickness="0,1,0,0" Padding="20,12">
+      <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+        <Button x:Name="BtnCancel" Content="Cancel"    Style="{StaticResource DlgBtn}" Margin="0,0,8,0" IsCancel="True"/>
+        <Button x:Name="BtnOK"     Content="Visualize" Style="{StaticResource DlgBtnPrimary}" IsDefault="True"/>
+      </StackPanel>
+    </Border>
+  </Grid>
+</Window>
+"@
+        $reader = [System.Xml.XmlReader]::Create([System.IO.StringReader]::new($dlgXaml))
+        $dlg = [System.Windows.Markup.XamlReader]::Load($reader); $dlg.Owner = $window
+        $list = $dlg.FindName('List'); $filterBox = $dlg.FindName('FilterBox'); $countText = $dlg.FindName('CountText')
+        $btnOK = $dlg.FindName('BtnOK'); $btnCancel = $dlg.FindName('BtnCancel')
+        $view = [System.Windows.Data.CollectionViewSource]::GetDefaultView($Roles)
+        $list.ItemsSource = $Roles
+        $countText.Text = "$($Roles.Count) items"
+        $applyFilter = {
+            $needle = ([string]$filterBox.Text).Trim().ToLowerInvariant()
+            if ([string]::IsNullOrEmpty($needle)) { $view.Filter = $null }
+            else {
+                $view.Filter = [Predicate[object]]{
+                    param($it)
+                    foreach ($prop in 'Name','RoleType','Origin') { if ("$($it.$prop)".ToLowerInvariant().Contains($needle)) { return $true } }
+                    return $false
+                }
+            }
+            $countText.Text = "$(@($view).Count) items"
+        }
+        $filterBox.Add_TextChanged({ & $applyFilter })
+        $list.Add_MouseDoubleClick({ if ($list.SelectedItem) { $btnOK.RaiseEvent([System.Windows.RoutedEventArgs]::new([System.Windows.Controls.Button]::ClickEvent)) } })
+        $btnOK.Add_Click({ $dlg.DialogResult = $true; $dlg.Close() })
+        $btnCancel.Add_Click({ $dlg.DialogResult = $false; $dlg.Close() })
+        $filterBox.Focus() | Out-Null
+        if ($Roles.Count -gt 0) { $list.SelectedIndex = 0 }
+        if ($dlg.ShowDialog() -eq $true -and $list.SelectedItem) { return [string]$list.SelectedItem.Name }
+        return $null
+    }
+
     # Render a visualizer node's details into the shared slide-out panel (same UI
     # the grids use). $NodeInfo = @{ Title; Badge; Rows = @([pscustomobject]@{Key;Value}) }.
     function Show-VizNodeDetails {
@@ -4826,6 +5391,24 @@ $($script:DlgResourcesXaml)
             $val = "$($r.Value)"; if ([string]::IsNullOrEmpty($val)) { $val = '-' }
             $rows.Add([PSCustomObject]@{ Key = "$($r.Key)"; Value = $val })
         }
+
+        # Lazily list a role's cmdlets when asked (user view's role nodes). Cached
+        # per role in $script:Cache.RoleCmdlets - the same cache the Roles grid uses.
+        if ($NodeInfo.CmdletsRole) {
+            if (-not $script:Cache.RoleCmdlets) { $script:Cache.RoleCmdlets = @{} }
+            $cmdletNames = $script:Cache.RoleCmdlets["$($NodeInfo.CmdletsRole)"]
+            if ($null -eq $cmdletNames) {
+                try {
+                    $entries = Get-ManagementRoleEntry -Identity "$($NodeInfo.CmdletsRole)\*" -ErrorAction Stop
+                    $cmdletNames = @($entries | ForEach-Object { ("$($_.Name)" -split '\\')[-1] } | Sort-Object -Unique)
+                    $script:Cache.RoleCmdlets["$($NodeInfo.CmdletsRole)"] = $cmdletNames
+                }
+                catch { $cmdletNames = @() }
+            }
+            $rows.Add([PSCustomObject]@{ Key = "Cmdlets ($($cmdletNames.Count))"; Value = '' })
+            foreach ($n in $cmdletNames) { $rows.Add([PSCustomObject]@{ Key = ''; Value = $n }) }
+        }
+
         $UI.DetailsList.ItemsSource = $rows
 
         # "Open in <section>" navigation target for this node (e.g. role -> Roles).
