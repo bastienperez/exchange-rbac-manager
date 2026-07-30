@@ -27,52 +27,53 @@ function Invoke-ExchangeGUI {
     $xaml = @'
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Exchange RBAC Manager" Height="780" Width="1280"
-        WindowStartupLocation="CenterScreen" FontFamily="Segoe UI">
+        Title="Exchange RBAC Manager" Height="820" Width="1380"
+        MinHeight="700" MinWidth="1120"
+        WindowStartupLocation="CenterScreen" FontFamily="Segoe UI"
+        Background="#FFFFFF" TextOptions.TextFormattingMode="Display">
   <Window.Resources>
+    <!-- Original Exchange palette, retained as the product's visual identity. -->
     <SolidColorBrush x:Key="Accent"      Color="#0078D4"/>
     <SolidColorBrush x:Key="AccentDark"  Color="#106EBE"/>
     <SolidColorBrush x:Key="AccentSoft"  Color="#DEECF9"/>
+    <SolidColorBrush x:Key="SidebarBg"   Color="#106EBE"/>
+    <SolidColorBrush x:Key="SidebarHover" Color="#0064B0"/>
+    <SolidColorBrush x:Key="CanvasBg"    Color="#FFFFFF"/>
     <SolidColorBrush x:Key="ContentBg"   Color="#FFFFFF"/>
-    <!-- Single chrome surface used by toolbar, action bar, details panel and Visualizer host. -->
     <SolidColorBrush x:Key="ToolbarBg"   Color="#F8F8F8"/>
     <SolidColorBrush x:Key="StatusBg"    Color="#F3F2F1"/>
     <SolidColorBrush x:Key="BorderC"     Color="#E1DFDD"/>
     <SolidColorBrush x:Key="Subdued"     Color="#605E5C"/>
     <SolidColorBrush x:Key="Ink"         Color="#201F1E"/>
+    <SolidColorBrush x:Key="Success"     Color="#107C10"/>
 
     <Style x:Key="NavButton" TargetType="ToggleButton">
       <Setter Property="Background" Value="Transparent"/>
       <Setter Property="Foreground" Value="White"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Height" Value="40"/>
+      <Setter Property="Height" Value="38"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
       <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontSize" Value="12.5"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
-            <!-- Thin margin on the right so the active "pill" doesn't bleed into the content area. -->
-            <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="18,0" Margin="0,1,0,1"
-                    CornerRadius="0">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" Padding="14,0"
+                    Margin="10,2" CornerRadius="7">
               <Grid>
                 <TextBlock x:Name="lbl" Text="{TemplateBinding Content}"
-                           Foreground="White" VerticalAlignment="Center"/>
-                <Border x:Name="active" HorizontalAlignment="Left" Width="3" Background="#0078D4" Opacity="0" Margin="-18,0,0,0"/>
+                           Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center"/>
               </Grid>
             </Border>
             <ControlTemplate.Triggers>
               <Trigger Property="IsMouseOver" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="#0064B0"/>
+                <Setter TargetName="lbl" Property="Foreground" Value="White"/>
               </Trigger>
               <Trigger Property="IsChecked" Value="True">
                 <Setter TargetName="bd" Property="Background" Value="White"/>
-                <Setter TargetName="bd" Property="CornerRadius" Value="6,0,0,6"/>
-                <Setter TargetName="bd" Property="Margin" Value="8,1,0,1"/>
-                <Setter TargetName="bd" Property="Padding" Value="10,0"/>
                 <Setter TargetName="lbl" Property="Foreground" Value="#0078D4"/>
-                <Setter TargetName="active" Property="Opacity" Value="1"/>
-                <Setter TargetName="active" Property="Margin" Value="-10,0,0,0"/>
+                <Setter TargetName="lbl" Property="FontWeight" Value="SemiBold"/>
               </Trigger>
             </ControlTemplate.Triggers>
           </ControlTemplate>
@@ -81,15 +82,15 @@ function Invoke-ExchangeGUI {
     </Style>
 
     <Style x:Key="ActionBtn" TargetType="Button">
-      <Setter Property="Padding" Value="14,0"/>
-      <Setter Property="Margin"  Value="4,0"/>
-      <Setter Property="Height"  Value="32"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="Margin"  Value="2,0"/>
+      <Setter Property="Height"  Value="28"/>
       <Setter Property="Background" Value="White"/>
       <Setter Property="Foreground" Value="#201F1E"/>
       <Setter Property="BorderBrush" Value="#C8C6C4"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontSize" Value="12"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
@@ -121,6 +122,7 @@ function Invoke-ExchangeGUI {
       <Setter Property="Background"  Value="#0078D4"/>
       <Setter Property="Foreground"  Value="White"/>
       <Setter Property="BorderBrush" Value="#0078D4"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
       <Style.Triggers>
         <Trigger Property="IsMouseOver" Value="True">
           <Setter Property="Background"  Value="#106EBE"/>
@@ -133,13 +135,62 @@ function Invoke-ExchangeGUI {
       </Style.Triggers>
     </Style>
 
+    <Style x:Key="SidebarConnectBtn" TargetType="Button">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="Foreground" Value="#0078D4"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="4"
+                    Padding="{TemplateBinding Padding}">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#EFF6FC"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
+    <Style x:Key="SidebarDisconnectBtn" TargetType="Button">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Foreground" Value="White"/>
+      <Setter Property="BorderBrush" Value="White"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="FontSize" Value="11.5"/>
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Border x:Name="bd" Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4">
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+            </Border>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Setter TargetName="bd" Property="Background" Value="#0064B0"/>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+
     <!-- Compact pill button used inside the floating contextual action bar. -->
     <Style x:Key="BtnDark" TargetType="Button">
       <Setter Property="Background"  Value="Transparent"/>
       <Setter Property="Foreground"  Value="#201F1E"/>
       <Setter Property="BorderThickness" Value="0"/>
-      <Setter Property="Padding" Value="10,4"/>
-      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Padding" Value="8,3"/>
+      <Setter Property="FontSize" Value="11.5"/>
       <Setter Property="FontWeight" Value="Medium"/>
       <Setter Property="Cursor" Value="Hand"/>
       <Setter Property="Template">
@@ -180,15 +231,15 @@ function Invoke-ExchangeGUI {
     </Style>
     <!-- Stateful toggle (Filter, Wrap…). Same template as ActionBtn but reacts to IsChecked. -->
     <Style x:Key="ToggleActionBtn" TargetType="ToggleButton">
-      <Setter Property="Padding" Value="14,0"/>
-      <Setter Property="Margin"  Value="4,0"/>
-      <Setter Property="Height"  Value="32"/>
+      <Setter Property="Padding" Value="10,0"/>
+      <Setter Property="Margin"  Value="2,0"/>
+      <Setter Property="Height"  Value="28"/>
       <Setter Property="Background" Value="White"/>
       <Setter Property="Foreground" Value="#201F1E"/>
       <Setter Property="BorderBrush" Value="#C8C6C4"/>
       <Setter Property="BorderThickness" Value="1"/>
       <Setter Property="Cursor" Value="Hand"/>
-      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontSize" Value="12"/>
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="ToggleButton">
@@ -230,6 +281,8 @@ function Invoke-ExchangeGUI {
       <Setter Property="HorizontalGridLinesBrush" Value="#F3F2F1"/>
       <Setter Property="HeadersVisibility" Value="Column"/>
       <Setter Property="RowHeight" Value="34"/>
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="#201F1E"/>
       <Setter Property="AutoGenerateColumns" Value="False"/>
       <Setter Property="IsReadOnly" Value="True"/>
       <Setter Property="SelectionMode" Value="Extended"/>
@@ -245,8 +298,8 @@ function Invoke-ExchangeGUI {
       <Setter Property="Foreground" Value="#323130"/>
       <Setter Property="FontSize" Value="11"/>
       <Setter Property="FontWeight" Value="SemiBold"/>
-      <Setter Property="MinHeight" Value="40"/>
-      <Setter Property="Padding" Value="14,8,14,8"/>
+      <Setter Property="MinHeight" Value="38"/>
+      <Setter Property="Padding" Value="14,7,14,7"/>
       <Setter Property="BorderBrush" Value="#0078D4"/>
       <Setter Property="BorderThickness" Value="0,0,0,2"/>
       <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -305,15 +358,12 @@ function Invoke-ExchangeGUI {
 
   <Grid>
     <Grid.ColumnDefinitions>
-      <ColumnDefinition Width="240"/>
+      <ColumnDefinition Width="232"/>
       <ColumnDefinition Width="*"/>
     </Grid.ColumnDefinitions>
 
     <!-- Sidebar -->
-    <Border Grid.Column="0">
-      <Border.Background>
-        <SolidColorBrush Color="#106EBE"/>
-      </Border.Background>
+    <Border Grid.Column="0" Background="{StaticResource SidebarBg}">
       <Grid>
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto"/>
@@ -322,31 +372,43 @@ function Invoke-ExchangeGUI {
           <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Exchange RBAC" Foreground="White"
-                   FontSize="20" FontWeight="SemiBold" Margin="16,18,16,12"/>
+        <StackPanel Grid.Row="0" Margin="18,20,16,16">
+          <TextBlock Text="EXCHANGE" Foreground="#DEECF9" FontFamily="Consolas"
+                     FontSize="10" FontWeight="Bold"/>
+          <TextBlock Text="RBAC Manager" Foreground="White"
+                     FontSize="19" FontWeight="SemiBold" Margin="0,2,0,0"/>
+        </StackPanel>
 
-        <Border Grid.Row="1" Margin="12,0,12,14" Padding="10" CornerRadius="3" BorderThickness="1">
+        <Border Grid.Row="1" Margin="10,0,10,14" Padding="12,11" CornerRadius="8" BorderThickness="1">
           <Border.Background><SolidColorBrush Color="White" Opacity="0.12"/></Border.Background>
           <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.4"/></Border.BorderBrush>
           <StackPanel>
-            <TextBlock x:Name="TenantLabel" Text="TENANT" Foreground="White" FontFamily="Consolas" FontSize="10" Opacity="0.85"/>
-            <TextBlock x:Name="TenantName" Text="" Foreground="White" FontSize="13"
-                       Margin="0,2,0,4" TextTrimming="CharacterEllipsis"/>
-            <StackPanel Orientation="Horizontal">
-              <Ellipse x:Name="ConnPulse" Width="8" Height="8" Fill="#E6C4C4" VerticalAlignment="Center"/>
+            <TextBlock Text="EXCHANGE ONLINE" Foreground="#DEECF9" FontFamily="Consolas"
+                       FontSize="9.5" FontWeight="Bold"/>
+            <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+              <Border Width="18" Height="18" CornerRadius="9" Background="Transparent"
+                      VerticalAlignment="Center">
+                <Ellipse x:Name="ConnPulse" Width="8" Height="8" Fill="#E6C4C4"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              </Border>
               <TextBlock x:Name="ConnStatus" Text="disconnected" Foreground="White"
-                         FontFamily="Consolas" FontSize="11" Margin="6,0,0,0"/>
+                         FontSize="12" FontWeight="SemiBold" Margin="7,0,0,0"
+                         VerticalAlignment="Center"/>
             </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,8,0,0" VerticalAlignment="Center">
+            <TextBlock x:Name="TenantLabel" Text="TENANT" Foreground="#DEECF9"
+                       FontFamily="Consolas" FontSize="9" Margin="0,10,0,0"/>
+            <TextBlock x:Name="TenantName" Text="" Foreground="White" FontSize="11.5"
+                       Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+            <StackPanel Orientation="Horizontal" Margin="0,10,0,0" VerticalAlignment="Center">
               <CheckBox x:Name="ChkUseWAM" Content="Use WAM (broker)" Foreground="White"
-                        IsChecked="False" VerticalAlignment="Center"/>
+                        IsChecked="False" VerticalAlignment="Center" FontSize="11"/>
               <Button x:Name="BtnWamInfo" Margin="6,0,0,0" Padding="0"
                       Background="Transparent" BorderThickness="0" Cursor="Hand"
                       ToolTip="What is WAM?">
                 <Button.Template>
                   <ControlTemplate TargetType="Button">
                     <TextBlock x:Name="lbl" Text="&#xE946;" FontFamily="Segoe MDL2 Assets"
-                               Foreground="#DEECF9" FontSize="14"
+                               Foreground="#DEECF9" FontSize="13"
                                VerticalAlignment="Center" HorizontalAlignment="Center"/>
                     <ControlTemplate.Triggers>
                       <Trigger Property="IsMouseOver" Value="True">
@@ -357,11 +419,10 @@ function Invoke-ExchangeGUI {
                 </Button.Template>
               </Button>
             </StackPanel>
-            <Button x:Name="BtnConnect" Content="Connect to Exchange Online" Margin="0,8,0,0" Height="30"
-                    Background="White" Foreground="#0078D4" BorderThickness="0" FontWeight="SemiBold" Cursor="Hand"/>
-            <Button x:Name="BtnDisconnect" Content="Disconnect" Margin="0,4,0,0" Height="28"
-                    Background="Transparent" Foreground="White" BorderBrush="White" BorderThickness="1"
-                    Cursor="Hand" Visibility="Collapsed"/>
+            <Button x:Name="BtnConnect" Content="Connect" Margin="0,8,0,0" Height="28"
+                    Style="{StaticResource SidebarConnectBtn}"/>
+            <Button x:Name="BtnDisconnect" Content="Disconnect" Margin="0,6,0,0" Height="26"
+                    Style="{StaticResource SidebarDisconnectBtn}" Visibility="Collapsed"/>
           </StackPanel>
         </Border>
 
@@ -370,17 +431,17 @@ function Invoke-ExchangeGUI {
           <ToggleButton x:Name="NavRoles"       Style="{StaticResource NavButton}" Content="▤   Roles"/>
           <ToggleButton x:Name="NavAssignments" Style="{StaticResource NavButton}" Content="⇄   Role Assignments"/>
           <ToggleButton x:Name="NavScopes"      Style="{StaticResource NavButton}" Content="⊙   Scopes"/>
-          <Border Height="1" Opacity="0.2" Background="White" Margin="14,8,14,8"/>
+          <Border Height="1" Background="#4DFFFFFF" Margin="18,8"/>
           <ToggleButton x:Name="NavUserRights"  Style="{StaticResource NavButton}" Content="⌕   User Rights"/>
           <ToggleButton x:Name="NavCommands"    Style="{StaticResource NavButton}" Content="⌘   Command Lookup"/>
           <ToggleButton x:Name="NavMyCmdlets"   Style="{StaticResource NavButton}" Content="≣   My Cmdlets"/>
-          <Border Height="1" Opacity="0.2" Background="White" Margin="14,8,14,8"/>
+          <Border Height="1" Background="#4DFFFFFF" Margin="18,8"/>
           <ToggleButton x:Name="NavVisualizer"  Style="{StaticResource NavButton}" Content="⤳   RBAC Visualizer"/>
           <ToggleButton x:Name="NavAudit"       Style="{StaticResource NavButton}" Content="◷   Audit Log"/>
         </StackPanel>
 
-        <Border Grid.Row="3" Padding="14,10" BorderThickness="0,1,0,0">
-          <Border.BorderBrush><SolidColorBrush Color="White" Opacity="0.25"/></Border.BorderBrush>
+        <Border Grid.Row="3" Padding="16,12" BorderThickness="0,1,0,0"
+                BorderBrush="#4DFFFFFF">
           <StackPanel>
             <TextBlock x:Name="VersionLabel" Foreground="White" Opacity="0.7"
                        FontFamily="Consolas" FontSize="11"/>
@@ -403,7 +464,7 @@ function Invoke-ExchangeGUI {
     </Border>
 
     <!-- Main content -->
-    <Grid Grid.Column="1" Background="White">
+    <Grid Grid.Column="1" Background="{StaticResource ContentBg}">
       <Grid.RowDefinitions>
         <RowDefinition Height="Auto"/>  <!-- Content head -->
         <RowDefinition Height="Auto"/>  <!-- Toolbar -->
@@ -413,24 +474,36 @@ function Invoke-ExchangeGUI {
         <RowDefinition Height="Auto"/>  <!-- Status bar -->
       </Grid.RowDefinitions>
 
-      <!-- Content head - no bottom border, the toolbar's own divider handles separation. -->
-      <Border Grid.Row="0" Padding="24,18,24,16">
+      <!-- A restrained title block gives each RBAC domain a clear operational context. -->
+      <Border Grid.Row="0" Background="White" Padding="24,18,24,16">
         <Grid>
           <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
           </Grid.ColumnDefinitions>
-          <StackPanel Grid.Column="0">
-            <TextBlock x:Name="Crumbs" FontFamily="Consolas" FontSize="11" Foreground="{StaticResource Subdued}"/>
-            <TextBlock x:Name="ViewTitle" FontSize="22" FontWeight="SemiBold" Margin="0,2,0,0" Foreground="{StaticResource Ink}"/>
-            <TextBlock x:Name="ViewDesc"  FontSize="13" Foreground="{StaticResource Subdued}" Margin="0,2,0,0" TextWrapping="Wrap"/>
+          <Border Grid.Column="0" Width="4" Margin="0,1,14,1" CornerRadius="2"
+                  Background="{StaticResource Accent}"/>
+          <StackPanel Grid.Column="1">
+            <TextBlock x:Name="Crumbs" FontFamily="Consolas" FontSize="10.5"
+                       Foreground="{StaticResource Accent}" FontWeight="SemiBold"/>
+            <TextBlock x:Name="ViewTitle" FontSize="22" FontWeight="SemiBold"
+                       Margin="0,3,0,0" Foreground="{StaticResource Ink}"/>
+            <TextBlock x:Name="ViewDesc" FontSize="12.5" Foreground="{StaticResource Subdued}"
+                       Margin="0,3,0,0" TextWrapping="Wrap"/>
           </StackPanel>
+          <Border Grid.Column="2" Background="#F8F8F8" BorderBrush="{StaticResource BorderC}"
+                  BorderThickness="1" CornerRadius="10" Padding="8,3"
+                  VerticalAlignment="Top">
+            <TextBlock Text="ADMIN CONSOLE" FontFamily="Consolas" FontSize="9.5"
+                       FontWeight="Bold" Foreground="#605E5C"/>
+          </Border>
         </Grid>
       </Border>
 
       <!-- Toolbar -->
-      <Border Grid.Row="1" Background="{StaticResource ToolbarBg}" Padding="24,12"
-              BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
+      <Border Grid.Row="1" Background="{StaticResource ToolbarBg}" Padding="24,8"
+              BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,1">
         <Grid>
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>  <!-- Search box -->
@@ -440,7 +513,7 @@ function Invoke-ExchangeGUI {
             <ColumnDefinition Width="Auto"/>  <!-- Primary action (+ New) -->
           </Grid.ColumnDefinitions>
           <Border x:Name="SearchHost" Grid.Column="0" BorderThickness="1" CornerRadius="4"
-                  Background="White" Width="280" Height="30">
+                  Background="White" Width="280" Height="28">
             <Border.Style>
               <Style TargetType="Border">
                 <Setter Property="BorderBrush" Value="#C8C6C4"/>
@@ -456,15 +529,17 @@ function Invoke-ExchangeGUI {
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
               </Grid.ColumnDefinitions>
-              <TextBlock Grid.Column="0" Text="⌕" Margin="8,0" VerticalAlignment="Center" Foreground="#605E5C"/>
+              <TextBlock Grid.Column="0" Text="⌕" Margin="8,0,6,0" VerticalAlignment="Center"
+                         Foreground="#605E5C" FontSize="13"/>
               <TextBox x:Name="SearchBox" Grid.Column="1" BorderThickness="0"
-                       VerticalContentAlignment="Center" Background="Transparent"/>
+                       VerticalContentAlignment="Center" Background="Transparent"
+                       Foreground="#201F1E" FontSize="12"/>
             </Grid>
           </Border>
           <Popup x:Name="SuggestPopup"
                  Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
                  PopupAnimation="Fade" IsOpen="False">
-            <Border Background="White" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="2"
+            <Border Background="White" BorderBrush="#C8C6C4" BorderThickness="1" CornerRadius="4"
                     Width="280" MaxHeight="260">
               <Border.Effect>
                 <DropShadowEffect BlurRadius="10" ShadowDepth="2" Opacity="0.15"/>
@@ -473,25 +548,25 @@ function Invoke-ExchangeGUI {
                        ScrollViewer.HorizontalScrollBarVisibility="Disabled"/>
             </Border>
           </Popup>
-          <StackPanel x:Name="GridModifiers" Grid.Column="2" Orientation="Horizontal" Margin="0,0,8,0">
-            <ToggleButton x:Name="BtnFilterRow" Content="Filter" Style="{StaticResource ToggleActionBtn}" Margin="0,0,6,0"
+          <StackPanel x:Name="GridModifiers" Grid.Column="2" Orientation="Horizontal" Margin="0,0,6,0">
+            <ToggleButton x:Name="BtnFilterRow" Content="Filter" Style="{StaticResource ToggleActionBtn}" Margin="0,0,4,0"
                           ToolTip="Toggle a filter input in each column header"/>
-            <ToggleButton x:Name="BtnWrap" Content="Wrap" Style="{StaticResource ToggleActionBtn}" Margin="0,0,6,0"
+            <ToggleButton x:Name="BtnWrap" Content="Wrap" Style="{StaticResource ToggleActionBtn}" Margin="0,0,4,0"
                           ToolTip="Toggle text wrapping on long cells"/>
-            <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,6,0"
+            <Button x:Name="BtnAutoFit" Content="Auto-fit" Style="{StaticResource ActionBtn}" Margin="0,0,4,0"
                     ToolTip="Resize columns to fit current content"/>
           </StackPanel>
           <!-- View-level tools (Refresh, Export, audit timeframes…) injected by Set-Actions. -->
           <StackPanel x:Name="ToolbarTools"   Grid.Column="3" Orientation="Horizontal" Margin="0,0,0,0"/>
           <!-- Primary view action (+ New, Lookup, Pick assignment…) injected by Set-Actions. -->
-          <StackPanel x:Name="ToolbarPrimary" Grid.Column="4" Orientation="Horizontal" Margin="12,0,0,0"/>
+          <StackPanel x:Name="ToolbarPrimary" Grid.Column="4" Orientation="Horizontal" Margin="8,0,0,0"/>
         </Grid>
       </Border>
 
       <!-- Filter chips (per-view buckets) on their own row to avoid squeezing them
            against the toolbar's right-hand cluster. Hidden when a view has no chips. -->
-      <Border x:Name="ChipsHostBorder" Grid.Row="2" Background="{StaticResource ToolbarBg}"
-              Padding="24,8" BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
+      <Border x:Name="ChipsHostBorder" Grid.Row="2" Background="White"
+              Padding="24,6" BorderBrush="{StaticResource BorderC}" BorderThickness="0,0,0,1">
         <ItemsControl x:Name="ChipsHost">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate><WrapPanel Orientation="Horizontal"/></ItemsPanelTemplate>
@@ -500,7 +575,7 @@ function Invoke-ExchangeGUI {
       </Border>
 
       <!-- Content area: table OR visualizer + slide-out details panel -->
-      <Grid Grid.Row="3">
+      <Grid Grid.Row="3" Background="White">
         <Grid.ColumnDefinitions>
           <ColumnDefinition Width="*"/>
           <ColumnDefinition x:Name="DetailsCol" Width="0"/>
@@ -515,7 +590,7 @@ function Invoke-ExchangeGUI {
             <Border x:Name="VizPlaceholderBox" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Background="#F3F2F1" CornerRadius="6" Padding="14,10">
               <TextBlock x:Name="VizPlaceholder" Text="Pick an assignment in the toolbar to visualize."
-                         Foreground="#605E5C" FontSize="13"/>
+                         Foreground="#605E5C" FontSize="12"/>
             </Border>
           </Grid>
           <Border x:Name="LoadingOverlay" Background="#B3FFFFFF" Visibility="Collapsed">
@@ -551,7 +626,8 @@ function Invoke-ExchangeGUI {
               </Grid.ColumnDefinitions>
               <StackPanel Grid.Column="0">
                 <StackPanel Orientation="Horizontal">
-                  <TextBlock Text="DETAILS" FontFamily="Consolas" FontSize="10" Foreground="{StaticResource Subdued}"
+                  <TextBlock Text="INSPECTOR" FontFamily="Consolas" FontSize="9.5"
+                             FontWeight="Bold" Foreground="{StaticResource Subdued}"
                              VerticalAlignment="Center"/>
                   <Border x:Name="DetailsTypeBadge" Margin="8,0,0,0" Padding="6,1" CornerRadius="6"
                           Background="#DEECF9" Visibility="Collapsed">
@@ -563,8 +639,8 @@ function Invoke-ExchangeGUI {
                            Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                <Button x:Name="BtnDetailsCopy" Content="⧉" Width="28" Height="28" ToolTip="Copy name"
-                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="14">
+                <Button x:Name="BtnDetailsCopy" Content="⧉" Width="24" Height="24" ToolTip="Copy name"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="12">
                   <Button.Style>
                     <Style TargetType="Button">
                       <Setter Property="Foreground" Value="#605E5C"/>
@@ -576,8 +652,8 @@ function Invoke-ExchangeGUI {
                     </Style>
                   </Button.Style>
                 </Button>
-                <Button x:Name="BtnDetailsClose" Content="✕" Width="28" Height="28"
-                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="14">
+                <Button x:Name="BtnDetailsClose" Content="✕" Width="24" Height="24"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="12">
                   <Button.Style>
                     <Style TargetType="Button">
                       <Setter Property="Foreground" Value="#605E5C"/>
@@ -664,23 +740,23 @@ function Invoke-ExchangeGUI {
            Light Fluent pill matching the rest of the app. Sits in Grid.Column=0 only so the
            details panel slide-out doesn't push the bar off-center. -->
       <Border x:Name="FloatingActions" Grid.Row="3" Grid.Column="0"
-              Background="White" CornerRadius="9" Padding="6,3"
-              BorderBrush="#0078D4" BorderThickness="2"
+              Background="White" CornerRadius="8" Padding="5,2"
+              BorderBrush="#0078D4" BorderThickness="1"
               VerticalAlignment="Bottom" HorizontalAlignment="Left"
               Margin="24,0,0,18" Visibility="Collapsed">
         <Border.Effect>
           <DropShadowEffect Color="Black" BlurRadius="18" ShadowDepth="3" Opacity="0.12" Direction="270"/>
         </Border.Effect>
         <StackPanel Orientation="Horizontal">
-          <Border Background="#EFF6FC" CornerRadius="4" Padding="8,2" VerticalAlignment="Center" Margin="2,0">
+          <Border Background="#EFF6FC" CornerRadius="4" Padding="7,2" VerticalAlignment="Center" Margin="2,0">
             <StackPanel Orientation="Horizontal">
-              <TextBlock x:Name="FloatingCount" Text="0" Foreground="#0078D4" FontFamily="Consolas" FontSize="11" FontWeight="SemiBold"/>
-              <TextBlock Text=" selected" Foreground="#0078D4" FontSize="11" Margin="2,0,0,0"/>
+              <TextBlock x:Name="FloatingCount" Text="0" Foreground="#0078D4" FontFamily="Consolas" FontSize="10.5" FontWeight="SemiBold"/>
+              <TextBlock Text=" selected" Foreground="#0078D4" FontSize="10.5" Margin="2,0,0,0"/>
             </StackPanel>
           </Border>
-          <Border Width="1" Height="14" Background="#E1DFDD" Margin="6,0"/>
+          <Border Width="1" Height="14" Background="#E1DFDD" Margin="5,0"/>
           <StackPanel x:Name="FloatingSelectionActions" Orientation="Horizontal"/>
-          <Border x:Name="FloatingSep" Width="1" Height="14" Background="#E1DFDD" Margin="4,0" Visibility="Collapsed"/>
+          <Border x:Name="FloatingSep" Width="1" Height="14" Background="#E1DFDD" Margin="3,0" Visibility="Collapsed"/>
           <StackPanel x:Name="FloatingDestructive" Orientation="Horizontal"/>
         </StackPanel>
       </Border>
@@ -688,13 +764,17 @@ function Invoke-ExchangeGUI {
       <!-- Activity log: collapsed drawer sitting just above the status bar. -->
       <Expander x:Name="LogDrawer" Grid.Row="4" IsExpanded="False"
                 Background="{StaticResource ToolbarBg}" BorderBrush="{StaticResource BorderC}"
-                BorderThickness="0,1,0,0" Padding="16,2">
+                BorderThickness="0,1,0,0" Padding="18,3">
         <Expander.Header>
           <StackPanel Orientation="Horizontal">
-            <TextBlock Text="ACTIVITY LOG" FontFamily="Consolas" FontSize="11" Foreground="#605E5C" VerticalAlignment="Center"/>
-            <TextBlock x:Name="LogCount" Text="" FontFamily="Consolas" FontSize="11" Foreground="#A19F9D" Margin="8,0,0,0" VerticalAlignment="Center"/>
-            <Button x:Name="BtnLogClear"  Content="Clear"   Margin="12,0,0,0" Padding="9,2" FontSize="11" Cursor="Hand"/>
-            <Button x:Name="BtnLogExport" Content="Export…" Margin="6,0,0,0"  Padding="9,2" FontSize="11" Cursor="Hand"/>
+            <TextBlock Text="ACTIVITY LOG" FontFamily="Consolas" FontSize="10" FontWeight="Bold"
+                       Foreground="#605E5C" VerticalAlignment="Center"/>
+            <TextBlock x:Name="LogCount" Text="" FontFamily="Consolas" FontSize="10.5"
+                       Foreground="#A19F9D" Margin="8,0,0,0" VerticalAlignment="Center"/>
+            <Button x:Name="BtnLogClear" Content="Clear" Margin="12,0,0,0" Padding="8,0"
+                    Height="24" FontSize="10.5" Style="{StaticResource ActionBtn}"/>
+            <Button x:Name="BtnLogExport" Content="Export…" Margin="6,0,0,0" Padding="8,0"
+                    Height="24" FontSize="10.5" Style="{StaticResource ActionBtn}"/>
           </StackPanel>
         </Expander.Header>
         <TextBox x:Name="TxtLog" IsReadOnly="True" Height="150" VerticalScrollBarVisibility="Auto"
@@ -706,8 +786,8 @@ function Invoke-ExchangeGUI {
       <!-- Status bar -->
       <Border Grid.Row="5" Background="{StaticResource StatusBg}"
               BorderBrush="{StaticResource BorderC}" BorderThickness="0,1,0,0"
-              Padding="0,8">
-        <Grid MinHeight="48">
+              Padding="0,5">
+        <Grid MinHeight="36">
           <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="Auto"/>
@@ -721,21 +801,21 @@ function Invoke-ExchangeGUI {
             </Grid.ColumnDefinitions>
             <TextBlock x:Name="StatusDot" Grid.Column="0" Foreground="#107C10" Text="●" FontSize="16"
                        VerticalAlignment="Center"/>
-            <TextBlock x:Name="StatusText" Grid.Column="1" Margin="10,0,0,0" Text="Ready"
+            <TextBlock x:Name="StatusText" Grid.Column="1" Margin="8,0,0,0" Text="Ready"
                        VerticalAlignment="Center"
-                       FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold" Foreground="#201F1E"
+                       FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold" Foreground="#201F1E"
                        TextWrapping="Wrap" TextTrimming="None"/>
             <TextBlock x:Name="StatusSep" Grid.Column="2" Margin="14,0" Text="|"
                        Foreground="#A19F9D" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusItems" Grid.Column="3" VerticalAlignment="Center"
-                       FontFamily="Segoe UI" FontSize="12" Foreground="#605E5C"/>
+                       FontFamily="Segoe UI" FontSize="11.5" Foreground="#605E5C"/>
           </Grid>
           <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="0,0,16,0" VerticalAlignment="Center">
             <TextBlock x:Name="ItemCount" Text="0 items" VerticalAlignment="Center"
-                       FontFamily="Segoe UI" FontSize="12" Foreground="#605E5C"/>
+                       FontFamily="Segoe UI" FontSize="11.5" Foreground="#605E5C"/>
             <TextBlock Text="|" Margin="14,0" Foreground="#A19F9D" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusVersion" VerticalAlignment="Center"
-                       FontFamily="Consolas" FontSize="11" Foreground="#A19F9D"/>
+                       FontFamily="Consolas" FontSize="10.5" Foreground="#A19F9D"/>
           </StackPanel>
         </Grid>
       </Border>
@@ -971,11 +1051,11 @@ function Invoke-ExchangeGUI {
         # Fluent-style filter chip: rounded pill, Segoe UI, hover state for inactive,
         # filled accent + bold when selected.
         $b = [System.Windows.Controls.Border]::new()
-        $b.CornerRadius      = '13'
+        $b.CornerRadius      = '12'
         $b.BorderThickness   = '1'
         $b.Margin            = '0,2,6,2'
-        $b.Padding           = '14,5'
-        $b.Height            = 26
+        $b.Padding           = '10,4'
+        $b.Height            = 24
         $b.VerticalAlignment = 'Center'
         $b.Cursor            = [System.Windows.Input.Cursors]::Hand
         $b.SnapsToDevicePixels = $true
@@ -1162,9 +1242,9 @@ function Invoke-ExchangeGUI {
       </Style>
       <Style x:Key="DlgBtn" TargetType="Button">
         <Setter Property="MinWidth" Value="92"/>
-        <Setter Property="Height" Value="32"/>
-        <Setter Property="Padding" Value="14,0"/>
-        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="Height" Value="28"/>
+        <Setter Property="Padding" Value="10,0"/>
+        <Setter Property="FontSize" Value="12"/>
         <Setter Property="Background" Value="White"/>
         <Setter Property="Foreground" Value="#201F1E"/>
         <Setter Property="BorderBrush" Value="#C8C6C4"/>
