@@ -13,9 +13,9 @@ function Format-RBACCmdletPreview {
     $parts = @($Cmdlet)
     foreach ($key in ($Parameters.Keys | Sort-Object)) {
         $value = $Parameters[$key]
-        if ($null -eq $value) { continue }
-        if ($value -is [bool]) {
-            if ($value) { $parts += "-$key" }
+        if ($null -eq $value) { $parts += "-$key `$null"; continue }
+        if ($value -is [bool] -or $value -is [System.Management.Automation.SwitchParameter]) {
+            $parts += '-{0}:${1}' -f $key, ([bool]$value).ToString().ToLowerInvariant()
             continue
         }
         if ($value -is [System.Collections.IEnumerable] -and -not ($value -is [string])) {
@@ -23,17 +23,11 @@ function Format-RBACCmdletPreview {
                 $s = "$_".Replace("'", "''")
                 "'$s'"
             })
-            $parts += "-$key $($items -join ',')"
+            $parts += "-$key @($($items -join ','))"
             continue
         }
-        $s = "$value"
-        if ($s -match "[`'`"\s\$]") {
-            $s = $s.Replace("'", "''")
-            $parts += "-$key '$s'"
-        }
-        else {
-            $parts += "-$key $s"
-        }
+        $s = "$value".Replace("'", "''")
+        $parts += "-$key '$s'"
     }
     return ($parts -join ' ')
 }
@@ -413,8 +407,9 @@ function Remove-RBACScope {
 function Copy-RBACRoleGroup {
     <#
     .SYNOPSIS
-    Duplicate an existing role group: same Roles list, optionally same Members,
-    under a new Name. Uses New-RoleGroup with the source's roles array.
+    Duplicate a role group with its recipient restrictions and optional members.
+    Every assignment is read before creating anything. New-RoleGroup can apply
+    only one common scope, so mixed or unsupported restrictions fail closed.
     #>
     [CmdletBinding()]
     param(
@@ -426,6 +421,84 @@ function Copy-RBACRoleGroup {
     )
     try {
         $source = Get-RoleGroup -Identity $SourceName -ErrorAction Stop
+        if (-not $source) { throw "Role group '$SourceName' was not returned." }
+
+        # Read the group's own assignment references individually. An empty or
+        # filtered tenant-wide listing must never be mistaken for unrestricted roles.
+        if (-not $source.PSObject.Properties['RoleAssignments'] -or -not $source.PSObject.Properties['Roles']) {
+            throw 'Cannot copy: role or assignment information is missing from the source group.'
+        }
+        $references = @($source.RoleAssignments | ForEach-Object { $_ })
+        $sourceRoles = @($source.Roles | ForEach-Object { $_ })
+        if ($references.Count -ne $sourceRoles.Count -or
+            @($references | Where-Object { [string]::IsNullOrWhiteSpace("$_") }).Count -gt 0) {
+            throw 'Cannot copy: the complete list of role assignments is unavailable or contains multiple assignments per role.'
+        }
+
+        $rolesToCopy = @()
+        $commonScope = $null
+        foreach ($reference in $references) {
+            $found = @(Get-ManagementRoleAssignment -Identity $reference -ErrorAction Stop)
+            if ($found.Count -ne 1) { throw "Cannot read exactly one assignment '$reference'." }
+            $assignment = $found[0]
+            if ($assignment.Enabled -ne $true -or "$($assignment.DelegationType)" -ne 'Regular') {
+                throw "Cannot copy assignment '$reference': disabled or delegating assignments are not supported."
+            }
+            if ([string]::IsNullOrWhiteSpace("$($assignment.Role)")) {
+                throw "Cannot copy assignment '$reference': its role is missing."
+            }
+            $roleResult = @(Get-ManagementRole -Identity $assignment.Role -ErrorAction Stop)
+            if ($roleResult.Count -ne 1) { throw "Cannot read the role of assignment '$reference'." }
+            $role = $roleResult[0]
+            if ([string]::IsNullOrWhiteSpace("$($role.Name)") -or $role.Name -in $rolesToCopy) {
+                throw 'Cannot copy: missing role name or multiple assignments for the same role.'
+            }
+            $rolesToCopy += "$($role.Name)"
+
+            # Read/configuration scopes must match what New-RoleGroup inherits
+            # from this role. Never silently drop a configuration restriction.
+            foreach ($scopeProperty in @('RecipientReadScope', 'ConfigReadScope', 'ConfigWriteScope')) {
+                $actual = "$($assignment.$scopeProperty)"
+                $implicit = "$($role.("Implicit$scopeProperty"))"
+                if ([string]::IsNullOrWhiteSpace($actual) -or
+                    [string]::IsNullOrWhiteSpace($implicit) -or $actual -ne $implicit) {
+                    throw "Cannot copy assignment '$reference': $scopeProperty cannot be preserved by New-RoleGroup."
+                }
+            }
+            foreach ($unsupported in @('CustomConfigWriteScope', 'ExclusiveConfigWriteScope',
+                    'ExclusiveRecipientWriteScope', 'RecipientOrganizationalUnitScope',
+                    'RecipientAdministrativeUnitScope', 'RecipientGroupScope')) {
+                if (-not [string]::IsNullOrWhiteSpace("$($assignment.$unsupported)")) {
+                    throw "Cannot copy assignment '$reference': $unsupported is not supported."
+                }
+            }
+
+            $scope = ''
+            if ("$($assignment.RecipientWriteScope)" -eq 'CustomRecipientScope') {
+                $scope = "$($assignment.CustomRecipientWriteScope)"
+                if ([string]::IsNullOrWhiteSpace($scope)) {
+                    throw "Cannot copy assignment '$reference': the custom recipient scope is unresolved."
+                }
+            }
+            elseif ([string]::IsNullOrWhiteSpace("$($assignment.RecipientWriteScope)") -or
+                [string]::IsNullOrWhiteSpace("$($role.ImplicitRecipientWriteScope)") -or
+                "$($assignment.RecipientWriteScope)" -ne "$($role.ImplicitRecipientWriteScope)" -or
+                -not [string]::IsNullOrWhiteSpace("$($assignment.CustomRecipientWriteScope)")) {
+                throw "Cannot copy assignment '$reference': its recipient write restriction is unsupported."
+            }
+            if ($null -ne $commonScope -and $scope -ne $commonScope) {
+                throw 'Cannot copy: assignments use different recipient scopes. Copy them individually to preserve their restrictions.'
+            }
+            $commonScope = $scope
+        }
+
+        $params = @{ Name = $NewName }
+        if ($NewDescription) { $params.Description = $NewDescription }
+        elseif ($source.Description) { $params.Description = "$($source.Description) (copy of $SourceName)" }
+        if ($rolesToCopy.Count -gt 0) { $params.Roles = $rolesToCopy }
+        if ($commonScope) { $params.CustomRecipientWriteScope = $commonScope }
+        $sourceMembers = @($source.Members | ForEach-Object { "$_" } | Where-Object { $_ })
+        if ($IncludeMembers -and $sourceMembers.Count -gt 0) { $params.Members = $sourceMembers }
     }
     catch {
         return [pscustomobject]@{
@@ -435,15 +508,6 @@ function Copy-RBACRoleGroup {
             Error    = $_
         }
     }
-
-    $sourceRoles   = @($source.Roles   | ForEach-Object { "$_" } | Where-Object { $_ })
-    $sourceMembers = @($source.Members | ForEach-Object { "$_" } | Where-Object { $_ })
-
-    $params = @{ Name = $NewName }
-    if ($NewDescription) { $params.Description = $NewDescription }
-    elseif ($source.Description) { $params.Description = "$($source.Description) (copy of $SourceName)" }
-    if ($sourceRoles.Count -gt 0) { $params.Roles = $sourceRoles }
-    if ($IncludeMembers -and $sourceMembers.Count -gt 0) { $params.Members = $sourceMembers }
 
     return (Invoke-RBACWrite -Cmdlet 'New-RoleGroup' -Parameters $params -DryRun:$DryRun)
 }

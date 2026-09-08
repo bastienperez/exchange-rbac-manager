@@ -8,6 +8,8 @@ Exchange RBAC Manager
 
 Instead of stitching together `Get-RoleGroup`, `Get-ManagementRoleAssignment`, `Get-ManagementScope`, `Search-AdminAuditLog` and friends by hand, you browse and act on them through a single Fluent-style window organised by RBAC concept.
 
+Role group copies preserve a shared custom recipient write scope and include it in the command preview. Each source assignment is checked before creation. Copies with mixed scopes, disabled or delegating assignments, unsupported restrictions, or incomplete assignment data are refused before any group or membership is created. Unrestricted copies must retain the scopes inherited from their source roles.
+
 Features
 --------
 
