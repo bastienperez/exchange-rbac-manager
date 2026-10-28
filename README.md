@@ -24,6 +24,14 @@ Features
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
 
+What's new in 1.7.0
+-------------------
+
+*   **Visualizer restyled**: nodes use a soft tint with a full accent border, grey edges and one colour per type (role red, scope amber, service principal green, group violet, user blue, solid blue hub), in the WPF view and in the HTML export.
+*   **Direct assignments flagged**: an assignment to anything other than a role group (service principal, user...) is not listed in the Exchange admin center. The Visualizer panels, the Type badge tooltip in Role Assignments and the HTML export now say so.
+*   **Inspector**: values are selectable and a new *Copy all details* button copies the whole panel.
+*   **Fixes**: the loading overlay no longer stays stuck on "Caching available cmdlets" after connecting, and long error messages no longer grow the status bar until the Activity log drawer is out of reach.
+
 What's new in 1.6.0
 -------------------
 
