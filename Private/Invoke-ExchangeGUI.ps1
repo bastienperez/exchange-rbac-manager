@@ -585,7 +585,7 @@ function Invoke-ExchangeGUI {
         <Grid>
           <Grid x:Name="VizHost" Visibility="Collapsed" Background="White">
             <ScrollViewer x:Name="VizScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
-              <Canvas x:Name="VizCanvas" Background="White" ClipToBounds="False"/>
+              <Canvas x:Name="VizCanvas" Background="#FAFAFA" ClipToBounds="False"/>
             </ScrollViewer>
             <Border x:Name="VizPlaceholderBox" HorizontalAlignment="Center" VerticalAlignment="Center"
                     Background="#F3F2F1" CornerRadius="6" Padding="14,10">
@@ -639,6 +639,19 @@ function Invoke-ExchangeGUI {
                            Foreground="{StaticResource Ink}" TextTrimming="CharacterEllipsis" Margin="0,2,0,0"/>
               </StackPanel>
               <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                <Button x:Name="BtnDetailsCopyAll" Content="⎘" Width="24" Height="24" ToolTip="Copy all details"
+                        Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="12">
+                  <Button.Style>
+                    <Style TargetType="Button">
+                      <Setter Property="Foreground" Value="#605E5C"/>
+                      <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                          <Setter Property="Foreground" Value="#0078D4"/>
+                        </Trigger>
+                      </Style.Triggers>
+                    </Style>
+                  </Button.Style>
+                </Button>
                 <Button x:Name="BtnDetailsCopy" Content="⧉" Width="24" Height="24" ToolTip="Copy name"
                         Background="Transparent" BorderThickness="0" Cursor="Hand" FontSize="12">
                   <Button.Style>
@@ -710,10 +723,12 @@ function Invoke-ExchangeGUI {
                           </Style>
                         </TextBlock.Style>
                       </TextBlock>
-                      <TextBlock Text="{Binding Value}" FontSize="12" Foreground="#201F1E"
-                                 TextWrapping="Wrap">
-                        <TextBlock.Style>
-                          <Style TargetType="TextBlock">
+                      <!-- Read-only TextBox (not TextBlock) so the value can be selected and copied -->
+                      <TextBox Text="{Binding Value, Mode=OneWay}" FontSize="12" Foreground="#201F1E"
+                               TextWrapping="Wrap" IsReadOnly="True" BorderThickness="0"
+                               Background="Transparent" Padding="0" Cursor="IBeam">
+                        <TextBox.Style>
+                          <Style TargetType="TextBox">
                             <Setter Property="Margin" Value="0,2,0,0"/>
                             <Style.Triggers>
                               <DataTrigger Binding="{Binding Key}" Value="">
@@ -725,8 +740,8 @@ function Invoke-ExchangeGUI {
                               </DataTrigger>
                             </Style.Triggers>
                           </Style>
-                        </TextBlock.Style>
-                      </TextBlock>
+                        </TextBox.Style>
+                      </TextBox>
                     </StackPanel>
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
@@ -804,7 +819,7 @@ function Invoke-ExchangeGUI {
             <TextBlock x:Name="StatusText" Grid.Column="1" Margin="8,0,0,0" Text="Ready"
                        VerticalAlignment="Center"
                        FontFamily="Segoe UI" FontSize="12" FontWeight="SemiBold" Foreground="#201F1E"
-                       TextWrapping="Wrap" TextTrimming="None"/>
+                       TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="34"/>
             <TextBlock x:Name="StatusSep" Grid.Column="2" Margin="14,0" Text="|"
                        Foreground="#A19F9D" VerticalAlignment="Center"/>
             <TextBlock x:Name="StatusItems" Grid.Column="3" VerticalAlignment="Center"
@@ -887,7 +902,7 @@ function Invoke-ExchangeGUI {
             'BtnFilterRow','BtnWrap','BtnAutoFit','GridModifiers',
             'ItemCount','ToolbarTools','ToolbarPrimary',
             'MainGrid','VizHost','VizCanvas','VizScroll','VizPlaceholder','VizPlaceholderBox',
-            'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose','BtnDetailsCopy','BtnDetailsGoto',
+            'DetailsCol','DetailsPanel','DetailsTitle','DetailsTypeBadge','DetailsTypeBadgeText','DetailsList','BtnDetailsClose','BtnDetailsCopy','BtnDetailsCopyAll','BtnDetailsGoto',
             'FloatingActions','FloatingCount','FloatingSelectionActions','FloatingSep','FloatingDestructive',
             'LoadingOverlay','LoadingText',
             'StatusDot','StatusText','StatusSep','StatusItems','StatusVersion',
@@ -936,12 +951,14 @@ function Invoke-ExchangeGUI {
     # Shared cmdlet verb -> group classification + colour palette. Defined once at
     # script scope so the WPF visualizer render AND the interactive HTML export
     # colour-code cmdlets identically.
+    # Look borrowed from 365Boost's Cytoscape graph: a soft tint fill, a full
+    # accent border and a dark text of the same hue; grey, light edges.
     $script:VizVerbPalettes = @{
-        Read        = @{ Bg='#C5E1A5'; Border='#558B2F'; Fg='#33691E' } # green
-        Modify      = @{ Bg='#FFE082'; Border='#B28704'; Fg='#5C3A00' } # amber
-        Destructive = @{ Bg='#FFCDD2'; Border='#A4262C'; Fg='#7A1A1F' } # red
-        Create      = @{ Bg='#BBDEFB'; Border='#0078D4'; Fg='#0B4A78' } # blue
-        Other       = @{ Bg='#E1BEE7'; Border='#6A1B9A'; Fg='#3F0C57' } # purple
+        Read        = @{ Bg='#F0FDF4'; Border='#15803D'; Fg='#14532D' } # green
+        Modify      = @{ Bg='#FFFBEB'; Border='#B45309'; Fg='#78350F' } # amber
+        Destructive = @{ Bg='#FEF2F2'; Border='#B91C1C'; Fg='#7F1D1D' } # red
+        Create      = @{ Bg='#EDF5FF'; Border='#004EB3'; Fg='#003373' } # blue
+        Other       = @{ Bg='#F5F3FF'; Border='#7C3AED'; Fg='#4C1D95' } # purple
     }
     $script:VizVerbToGroup = @{
         'Get' = 'Read'; 'Find' = 'Read'; 'Search' = 'Read'; 'Test' = 'Read'; 'Measure' = 'Read'
@@ -950,7 +967,22 @@ function Invoke-ExchangeGUI {
         'New' = 'Create'; 'Add' = 'Create'; 'Enable' = 'Create'; 'Start' = 'Create'; 'Install' = 'Create'
     }
     $script:VizGroupOrder    = @{ Read=0; Modify=1; Destructive=2; Create=3; Other=4 }
-    $script:VizMemberPalette = @{ Bg='#EAF3FB'; Border='#2B88D8'; Fg='#0B4A78' } # scope members
+    $script:VizMemberPalette = @{ Bg='#F0FDFA'; Border='#0F766E'; Fg='#134E4A' } # scope members
+    $script:VizRolePalette   = @{ Bg='#FEF2F2'; Border='#B91C1C'; Fg='#7F1D1D' } # What
+    $script:VizScopePalette  = @{ Bg='#FFFBEB'; Border='#A15C00'; Fg='#78350F' } # Where
+    $script:VizHubPalette    = @{ Bg='#004EB3'; Border='#004EB3'; Fg='#FFFFFF' } # centre node: solid fill
+    $script:VizEdgeColor     = '#A1A1AA'
+    # Who: one hue per assignee family, like 365Boost's object type accents.
+    function Get-VizAssigneePalette {
+        param([string]$Type)
+        switch ($Type) {
+            'ServicePrincipal' { return @{ Bg='#F0FDF4'; Border='#15803D'; Fg='#14532D' } }
+            'RoleGroup'        { return @{ Bg='#F5F3FF'; Border='#7C3AED'; Fg='#4C1D95' } }
+            'SecurityGroup'    { return @{ Bg='#F5F3FF'; Border='#7C3AED'; Fg='#4C1D95' } }
+            'User'             { return @{ Bg='#EDF5FF'; Border='#004EB3'; Fg='#003373' } }
+            default            { return @{ Bg='#F4F4F5'; Border='#71717A'; Fg='#27272A' } }
+        }
+    }
 
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
     $modVer = Get-RBACModuleVersion
@@ -989,7 +1021,13 @@ function Invoke-ExchangeGUI {
     # ---------------- Status helpers ----------------
     function Set-Status {
         param([string]$Message, [ValidateSet('info','warn','error','ok')]$Level = 'info')
-        $UI.StatusText.Text = $Message
+        # Long errors (e.g. Exchange listing every valid filter property) must not
+        # grow the status bar until it pushes the log drawer off-screen: show the
+        # first line, capped, and keep the full text in the tooltip and the log.
+        $short = ("$Message" -split "`r?`n")[0]
+        if ($short.Length -gt 220) { $short = $short.Substring(0, 220) + '…' }
+        $UI.StatusText.Text    = $short
+        $UI.StatusText.ToolTip = $Message
         switch ($Level) {
             'error' {
                 $UI.StatusDot.Foreground  = '#A4262C'
@@ -2132,7 +2170,11 @@ $($script:DlgResourcesXaml)
         'SecurityGroup'        = @{ Bg='#F3E5F5'; Fg='#6A1B9A' }
         'RoleAssignmentPolicy' = @{ Bg='#E0F7FA'; Fg='#006064' }
         'Computer'             = @{ Bg='#ECEFF1'; Fg='#37474F' }
+        'ServicePrincipal'     = @{ Bg='#FFF8E1'; Fg='#8D6E00' }
     }
+    # The Exchange admin center (#/adminRoles) only lists role groups, so an
+    # assignment to any other assignee type is invisible there.
+    $EacDirectNote = 'Direct assignment: not listed in the Exchange admin center (Roles > Admin roles shows role groups only). Visible via Get-ManagementRoleAssignment.'
     $BadgeScopeType = @{
         'Recipient'          = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
         'Server'             = @{ Bg='#FFF3E0'; Fg='#E65100' }
@@ -2185,7 +2227,7 @@ $($script:DlgResourcesXaml)
                 @{ Header='Assignment Name'; Path='Name';                Width=260; MinWidth=160 }
                 @{ Header='Role';            Path='Role';                Width=200; MinWidth=140 }
                 @{ Header='Assignee';        Path='RoleAssignee';        Width=180; MinWidth=120 }
-                @{ Header='Type';            Path='RoleAssigneeType';    Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeAssigneeType }
+                @{ Header='Type';            Path='RoleAssigneeType';    Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeAssigneeType; BadgeTip=$EacDirectNote; BadgeTipSkip='RoleGroup' }
                 @{ Header='Read Scope';      Path='RecipientReadScope';  Width='*'; MinWidth=140 }
                 @{ Header='Write Scope';     Path='RecipientWriteScope'; Width='*'; MinWidth=140 }
             )
@@ -2503,6 +2545,10 @@ $($script:DlgResourcesXaml)
                     $bDT.Setters.Add([System.Windows.Setter]::new(
                         [System.Windows.Controls.TextBlock]::FontWeightProperty,
                         [System.Windows.FontWeights]::SemiBold))
+                    if ($c.BadgeTip -and $k -ne $c.BadgeTipSkip) {
+                        $bDT.Setters.Add([System.Windows.Setter]::new(
+                            [System.Windows.FrameworkElement]::ToolTipProperty, [string]$c.BadgeTip))
+                    }
                     $eStyle.Triggers.Add($bDT)
                 }
             }
@@ -2797,10 +2843,13 @@ $($script:DlgResourcesXaml)
             $scopeSub = "Read: $readScopeName`n$mCount member$(if ($mCount -eq 1) { '' } else { 's' })$(if ($script:VizScopeTruncated) { '+' } else { '' })"
         }
 
+        $rolePal     = $script:VizRolePalette
+        $assigneePal = Get-VizAssigneePalette -Type "$($a.RoleAssigneeType)"
+        $scopePal    = $script:VizScopePalette
         $spokes = @(
-            @{ Label='What · Role';     Name=$a.Role;          Sub='';              Bg='#DFF6DD'; X=$cx - 280; Y=$cy - 200 }
-            @{ Label='Who · Assignee';  Name=$a.RoleAssignee;  Sub=$a.RoleAssigneeType; Bg='#FFF4CE'; X=$cx + 100; Y=$cy - 200 }
-            @{ Label='Where · Scope';   Name=$writeScopeName;  Sub=$scopeSub;       Bg='#FCE4E4'; X=$cx - 100; Y=$cy + 130 }
+            @{ Label='What · Role';     Name=$a.Role;          Sub='';              Bg=$rolePal.Bg;     Border=$rolePal.Border;     X=$cx - 280; Y=$cy - 200 }
+            @{ Label='Who · Assignee';  Name=$a.RoleAssignee;  Sub=$a.RoleAssigneeType; Bg=$assigneePal.Bg; Border=$assigneePal.Border; X=$cx + 100; Y=$cy - 200 }
+            @{ Label='Where · Scope';   Name=$writeScopeName;  Sub=$scopeSub;       Bg=$scopePal.Bg;    Border=$scopePal.Border;    X=$cx - 100; Y=$cy + 130 }
         )
 
         # -- Role node centre for cmdlet fan ------------------------------
@@ -3025,8 +3074,8 @@ $($script:DlgResourcesXaml)
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY
             $line.X2 = $s.X + 90 + $offsetX; $line.Y2 = $s.Y + 30 + $offsetY
-            $line.Stroke = '#605E5C'
-            $line.StrokeThickness = 1.5
+            $line.Stroke = $script:VizEdgeColor
+            $line.StrokeThickness = 1.4
             $null = $cv.Children.Add($line)
             $null = $spokeLines.Add($line)
         }
@@ -3043,11 +3092,11 @@ $($script:DlgResourcesXaml)
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $roleNcX + $offsetX; $line.Y1 = $roleNcY + $offsetY
             $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
-            $line.Stroke          = '#558B2F'
-            $line.StrokeThickness = 1.2
+            $line.Stroke          = $script:VizEdgeColor
+            $line.StrokeThickness = 1.0
             $line.StrokeDashArray = $dashes
             $null = $cv.Children.Add($line)
-            $arrow = & $addArrow $cv ($pos.NcX + $offsetX) ($pos.NcY + $offsetY) $pos.Angle '#558B2F'
+            $arrow = & $addArrow $cv ($pos.NcX + $offsetX) ($pos.NcY + $offsetY) $pos.Angle $script:VizEdgeColor
             $null = $cmdletLines.Add($line)
             $null = $cmdletArrows.Add($arrow)
         }
@@ -3060,11 +3109,11 @@ $($script:DlgResourcesXaml)
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $scopeNcX + $offsetX; $line.Y1 = $scopeNcY + $offsetY
             $line.X2 = $pos.NcX  + $offsetX; $line.Y2 = $pos.NcY  + $offsetY
-            $line.Stroke          = $script:VizMemberPalette.Border
+            $line.Stroke          = $script:VizEdgeColor
             $line.StrokeThickness = 1.0
             $line.StrokeDashArray = $dashes
             $null = $cv.Children.Add($line)
-            $arrow = & $addArrow $cv ($pos.NcX + $offsetX) ($pos.NcY + $offsetY) $pos.Angle $script:VizMemberPalette.Border
+            $arrow = & $addArrow $cv ($pos.NcX + $offsetX) ($pos.NcY + $offsetY) $pos.Angle $script:VizEdgeColor
             $null = $memberLines.Add($line)
             $null = $memberArrows.Add($arrow)
         }
@@ -3073,16 +3122,16 @@ $($script:DlgResourcesXaml)
         $hub = [System.Windows.Controls.Border]::new()
         $hub.Width = $hubR * 2; $hub.Height = $hubR * 2
         $hub.CornerRadius = "$hubR"
-        $hub.Background = '#E6E0F8'
-        $hub.BorderBrush = '#0078D4'
-        $hub.BorderThickness = 2
+        $hub.Background = $script:VizHubPalette.Bg
+        $hub.BorderBrush = $script:VizHubPalette.Border
+        $hub.BorderThickness = 1.5
         $sp = [System.Windows.Controls.StackPanel]::new()
         $sp.HorizontalAlignment = 'Center'; $sp.VerticalAlignment = 'Center'
         $tb1 = [System.Windows.Controls.TextBlock]::new()
-        $tb1.Text = 'ASSIGNMENT'; $tb1.FontFamily = 'Consolas'; $tb1.FontSize = 9; $tb1.Foreground = '#605E5C'
+        $tb1.Text = 'ASSIGNMENT'; $tb1.FontFamily = 'Consolas'; $tb1.FontSize = 9; $tb1.Foreground = '#BFD9F5'
         $tb1.HorizontalAlignment = 'Center'
         $tb2 = [System.Windows.Controls.TextBlock]::new()
-        $tb2.Text = $a.Name; $tb2.FontWeight = 'SemiBold'; $tb2.FontSize = 11
+        $tb2.Text = $a.Name; $tb2.FontWeight = 'SemiBold'; $tb2.FontSize = 11; $tb2.Foreground = $script:VizHubPalette.Fg
         $tb2.HorizontalAlignment = 'Center'; $tb2.TextWrapping = 'Wrap'; $tb2.TextAlignment = 'Center'
         $tb2.MaxWidth = $hubR * 2 - 16
         $null = $sp.Children.Add($tb1)
@@ -3108,18 +3157,27 @@ $($script:DlgResourcesXaml)
         }
         $groupSummary = (@('Read','Modify','Destructive','Create','Other') | Where-Object { $grpCounts[$_] } |
             ForEach-Object { "$_ $($grpCounts[$_])" }) -join ' · '
+        # The Exchange admin center (#/adminRoles) only lists role groups. An
+        # assignment made straight to a service principal, user or other non
+        # role-group assignee never shows up there, so say so.
+        $eacNote = $null
+        if ("$($a.RoleAssigneeType)" -ne 'RoleGroup') {
+            $eacNote = $EacDirectNote
+        }
+        $hubRows = @(
+            [pscustomobject]@{ Key='Role';          Value="$($a.Role)" }
+            [pscustomobject]@{ Key='Assignee';      Value="$($a.RoleAssignee)" }
+            [pscustomobject]@{ Key='Assignee type'; Value="$($a.RoleAssigneeType)" }
+            [pscustomobject]@{ Key='Write scope';   Value=$writeScopeName }
+            [pscustomobject]@{ Key='Read scope';    Value=$readScopeName }
+            [pscustomobject]@{ Key='Enabled';       Value="$($a.Enabled)" }
+            [pscustomobject]@{ Key='Cmdlets';       Value="$($allEntries.Count)" }
+        )
+        if ($eacNote) { $hubRows += [pscustomobject]@{ Key='EAC visibility'; Value=$eacNote } }
         $hubInfo = @{
             Title = "$($a.Name)"; Badge = 'ASSIGNMENT'
             Nav   = @{ View='Assignments'; Name="$($a.Name)"; Label='Open in Role Assignments' }
-            Rows = @(
-                [pscustomobject]@{ Key='Role';          Value="$($a.Role)" }
-                [pscustomobject]@{ Key='Assignee';      Value="$($a.RoleAssignee)" }
-                [pscustomobject]@{ Key='Assignee type'; Value="$($a.RoleAssigneeType)" }
-                [pscustomobject]@{ Key='Write scope';   Value=$writeScopeName }
-                [pscustomobject]@{ Key='Read scope';    Value=$readScopeName }
-                [pscustomobject]@{ Key='Enabled';       Value="$($a.Enabled)" }
-                [pscustomobject]@{ Key='Cmdlets';       Value="$($allEntries.Count)" }
-            )
+            Rows = $hubRows
         }
         & $makeDraggable $hub $hubLinks $hubInfo
 
@@ -3128,24 +3186,25 @@ $($script:DlgResourcesXaml)
             $s = $spokes[$si]
             $node = [System.Windows.Controls.Border]::new()
             $node.Width = 200
-            $node.CornerRadius = '4'
+            $node.CornerRadius = '8'
             $node.Background = $s.Bg
-            $node.BorderBrush = '#605E5C'
-            $node.BorderThickness = 1
+            $node.BorderBrush = $s.Border
+            $node.BorderThickness = 1.5
             $node.Padding = '10,8'
             $st = [System.Windows.Controls.StackPanel]::new()
             $lbl = [System.Windows.Controls.TextBlock]::new()
             $lbl.Text = $s.Label; $lbl.FontFamily = 'Consolas'; $lbl.FontSize = 10
-            $lbl.Foreground = '#605E5C'
+            $lbl.Foreground = '#62626B'
             $name = [System.Windows.Controls.TextBlock]::new()
             $name.Text = $s.Name; $name.FontSize = 13; $name.FontWeight = 'SemiBold'
+            $name.Foreground = '#18181B'
             $name.TextWrapping = 'Wrap'
             $null = $st.Children.Add($lbl)
             $null = $st.Children.Add($name)
             if ($s.Sub) {
                 $sub = [System.Windows.Controls.TextBlock]::new()
                 $sub.Text = $s.Sub; $sub.FontFamily = 'Consolas'; $sub.FontSize = 10
-                $sub.Foreground = '#605E5C'; $sub.TextWrapping = 'Wrap'
+                $sub.Foreground = '#62626B'; $sub.TextWrapping = 'Wrap'
                 $null = $st.Children.Add($sub)
             }
             $node.Child = $st
@@ -3193,9 +3252,11 @@ $($script:DlgResourcesXaml)
                     }
                 }
                 1 {
+                    $rows = @([pscustomobject]@{ Key='Type'; Value="$($a.RoleAssigneeType)" })
+                    if ($eacNote) { $rows += [pscustomobject]@{ Key='EAC visibility'; Value=$eacNote } }
                     $spokeInfo = @{
                         Title="$($a.RoleAssignee)"; Badge='ASSIGNEE'
-                        Rows=@( [pscustomobject]@{ Key='Type'; Value="$($a.RoleAssigneeType)" } )
+                        Rows=$rows
                         Nav = @{ View='UserRights'; Name="$($a.RoleAssignee)"; Label='Look up in User Rights' }
                     }
                 }
@@ -3232,11 +3293,11 @@ $($script:DlgResourcesXaml)
             $pal   = $verbPalettes[$entry.CmdletGroup]
             $node  = [System.Windows.Controls.Border]::new()
             $node.Width        = $cmdletNodeW
-            $node.CornerRadius = '3'
+            $node.CornerRadius = '6'
             $node.Background   = $pal.Bg
             $node.BorderBrush  = $pal.Border
-            $node.BorderThickness = 1
-            $node.Padding      = '5,2'
+            $node.BorderThickness = 1.2
+            $node.Padding      = '6,2'
             $tb = [System.Windows.Controls.TextBlock]::new()
             $tb.Text        = if ($entry.CmdletShortName) { $entry.CmdletShortName } else { "$($entry.Name)" }
             $tb.FontSize    = 9; $tb.FontWeight = 'SemiBold'
@@ -3273,11 +3334,11 @@ $($script:DlgResourcesXaml)
             $m    = $members[$i]
             $node = [System.Windows.Controls.Border]::new()
             $node.Width        = $memberNodeW
-            $node.CornerRadius = '3'
+            $node.CornerRadius = '6'
             $node.Background   = $memPal.Bg
             $node.BorderBrush  = $memPal.Border
-            $node.BorderThickness = 1
-            $node.Padding      = '5,2'
+            $node.BorderThickness = 1.2
+            $node.Padding      = '6,2'
             $tb = [System.Windows.Controls.TextBlock]::new()
             $tb.Text         = if ($m.Name) { "$($m.Name)" } else { "$($m.PrimarySmtpAddress)" }
             $tb.FontSize     = 9; $tb.FontWeight = 'SemiBold'
@@ -3318,10 +3379,10 @@ $($script:DlgResourcesXaml)
                 $groupCounts[$e.CmdletGroup]++
             }
             $legend = [System.Windows.Controls.Border]::new()
-            $legend.Background = '#F3F2F1'
-            $legend.BorderBrush = '#C8C6C4'
+            $legend.Background = '#FFFFFF'
+            $legend.BorderBrush = '#E4E4E7'
             $legend.BorderThickness = 1
-            $legend.CornerRadius = '4'
+            $legend.CornerRadius = '8'
             $legend.Padding = '8,5'
             $legendPanel = [System.Windows.Controls.StackPanel]::new()
             $legendPanel.Orientation = 'Horizontal'
@@ -5750,14 +5811,20 @@ $($script:DlgResourcesXaml)
         $nodes = [System.Collections.Generic.List[object]]::new()
         $edges = [System.Collections.Generic.List[object]]::new()
 
+        $hubPal      = $script:VizHubPalette
+        $rolePal     = $script:VizRolePalette
+        $scopePal    = $script:VizScopePalette
+        $assigneePal = Get-VizAssigneePalette -Type "$($a.RoleAssigneeType)"
         $null = $nodes.Add([ordered]@{ id='hub'; type='hub'; group=''; label="$($a.Name)"; sub='ASSIGNMENT';
-            bg='#E6E0F8'; border='#0078D4'; fg='#3F0C57'; tooltip="Assignment: $($a.Name)" })
+            bg=$hubPal.Bg; border=$hubPal.Border; fg=$hubPal.Fg; tooltip="Assignment: $($a.Name)" })
         $null = $nodes.Add([ordered]@{ id='role'; type='role'; group=''; label="$($a.Role)"; sub='What · Role';
-            bg='#DFF6DD'; border='#558B2F'; fg='#1B3A12'; tooltip="Role: $($a.Role)" })
+            bg=$rolePal.Bg; border=$rolePal.Border; fg=$rolePal.Fg; tooltip="Role: $($a.Role)" })
+        $assigneeTip = "Assignee: $($a.RoleAssignee) ($($a.RoleAssigneeType))"
+        if ("$($a.RoleAssigneeType)" -ne 'RoleGroup') { $assigneeTip += "`n$EacDirectNote" }
         $null = $nodes.Add([ordered]@{ id='assignee'; type='assignee'; group=''; label="$($a.RoleAssignee)"; sub="Who · $($a.RoleAssigneeType)";
-            bg='#FFF4CE'; border='#B28704'; fg='#5C3A00'; tooltip="Assignee: $($a.RoleAssignee) ($($a.RoleAssigneeType))" })
+            bg=$assigneePal.Bg; border=$assigneePal.Border; fg=$assigneePal.Fg; tooltip=$assigneeTip })
         $null = $nodes.Add([ordered]@{ id='scope'; type='scope'; group=''; label=$writeScopeName; sub="Where · Read: $readScopeName";
-            bg='#FCE4E4'; border='#A4262C'; fg='#7A1A1F'; tooltip="Write scope: $writeScopeName`nRead scope: $readScopeName" })
+            bg=$scopePal.Bg; border=$scopePal.Border; fg=$scopePal.Fg; tooltip="Write scope: $writeScopeName`nRead scope: $readScopeName" })
 
         $null = $edges.Add([ordered]@{ source='hub'; target='role';     kind='spoke' })
         $null = $edges.Add([ordered]@{ source='hub'; target='assignee'; kind='spoke' })
@@ -5875,9 +5942,9 @@ $($script:DlgResourcesXaml)
   #stage { position:fixed; top:52px; left:0; right:0; bottom:0; background:#FAFAFA; overflow:hidden; }
   svg { width:100%; height:100%; display:block; cursor:grab; }
   svg.panning { cursor:grabbing; }
-  .edge { stroke:#605E5C; stroke-width:1.4; }
-  .edge.cmdlet { stroke:#558B2F; stroke-width:1.1; stroke-dasharray:4 2; }
-  .edge.member { stroke:#2B88D8; stroke-width:1.0; stroke-dasharray:4 2; }
+  .edge { stroke:#A1A1AA; stroke-width:1.4; }
+  .edge.cmdlet { stroke:#A1A1AA; stroke-width:1.0; stroke-dasharray:4 2; }
+  .edge.member { stroke:#A1A1AA; stroke-width:1.0; stroke-dasharray:4 2; }
   .edge.faded { opacity:0.08; }
   .node { cursor:pointer; }
   .node rect, .node circle { stroke-width:1.5; }
@@ -5914,7 +5981,7 @@ $($script:DlgResourcesXaml)
   <svg id="svg" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-        <path d="M0,0 L10,5 L0,10 z" fill="#9B9B9B"></path>
+        <path d="M0,0 L10,5 L0,10 z" fill="#A1A1AA"></path>
       </marker>
     </defs>
     <g id="viewport">
@@ -5996,10 +6063,10 @@ var GRAPH = __GRAPH_JSON__;
         shape=document.createElementNS(SVGNS,'rect');
         shape.setAttribute('x', -n.w/2); shape.setAttribute('y', -n.h/2);
         shape.setAttribute('width', n.w); shape.setAttribute('height', n.h);
-        shape.setAttribute('rx', 5);
+        shape.setAttribute('rx', n.type==='cmdlet'||n.type==='member' ? 6 : 8);
       }
       shape.setAttribute('fill', n.bg||'#fff');
-      shape.setAttribute('stroke', n.border||'#605E5C');
+      shape.setAttribute('stroke', n.border||'#A1A1AA');
       g.appendChild(shape);
       appendLabels(g, n);
       gNodes.appendChild(g);
@@ -6011,10 +6078,10 @@ var GRAPH = __GRAPH_JSON__;
     var fg=n.fg||'#201F1E';
     var lines=[];
     if(n.type==='hub'){
-      lines.push({t:'ASSIGNMENT', s:9, c:'#605E5C', dy:-6, mono:true});
+      lines.push({t:'ASSIGNMENT', s:9, c:'#BFD9F5', dy:-6, mono:true});
       lines.push({t:truncate(n.label,18), s:12, c:fg, dy:12, bold:true});
     } else if(n.type==='role'||n.type==='assignee'||n.type==='scope'){
-      lines.push({t:truncate(n.sub||'', 30), s:9, c:'#605E5C', dy:-15, mono:true});
+      lines.push({t:truncate(n.sub||'', 30), s:9, c:'#62626B', dy:-15, mono:true});
       lines.push({t:truncate(n.label, 24), s:13, c:fg, dy:5, bold:true});
     } else {
       lines.push({t:truncate(n.label, 22), s:9.5, c:fg, dy:3, bold:true});
@@ -6229,8 +6296,10 @@ var GRAPH = __GRAPH_JSON__;
             # runspace (it can't be backgrounded - see the note above), so building
             # it here keeps it off the keystroke path; otherwise it ran on the UI
             # thread at the 2nd character typed and froze Command Lookup.
-            Show-Loading -Message 'Caching available cmdlets…'
-            Ensure-CommandSuggestions
+            # Invoke-WithLoading pairs the Show/Hide: a bare Show-Loading here left
+            # LoadingDepth at 1 after the single Hide in finally, so the overlay
+            # stayed up forever on "Caching available cmdlets…".
+            Invoke-WithLoading -Message 'Caching available cmdlets…' -Action { Ensure-CommandSuggestions }
 
             Set-Status 'Connected. Click Refresh or pick a section in the sidebar to load data.' 'ok'
         }
@@ -6490,6 +6559,19 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
         try {
             [System.Windows.Clipboard]::SetText($name)
             Set-Status "Copied '$name' to clipboard." 'ok'
+        }
+        catch { Set-Status "Copy failed: $($_.Exception.Message)" 'error' }
+    })
+    $UI.BtnDetailsCopyAll.Add_Click({
+        $lines = [System.Collections.Generic.List[string]]::new()
+        $lines.Add("$($UI.DetailsTitle.Text)")
+        foreach ($r in @($UI.DetailsList.ItemsSource)) {
+            if ("$($r.Key)") { $lines.Add("$($r.Key): $($r.Value)") }
+            elseif ("$($r.Value)") { $lines.Add("$($r.Value)") }
+        }
+        try {
+            [System.Windows.Clipboard]::SetText(($lines -join "`r`n"))
+            Set-Status 'Copied inspector details to clipboard.' 'ok'
         }
         catch { Set-Status "Copy failed: $($_.Exception.Message)" 'error' }
     })

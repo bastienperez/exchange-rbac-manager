@@ -160,6 +160,8 @@ Use it to understand the role hierarchy (every custom role inherits from a paren
 
 Backed by `Get-ManagementRoleAssignment`. The actual binding that ties a *Role* to an *Assignee* (user, role group, USG or policy) within a *Scope*. The grid shows the assignment name, the role, the assignee, the assignee type, and both the read and write scopes.
 
+> **Why is my role not in the Exchange admin center?** The EAC page *Roles > Admin roles* (`#/adminRoles`) only lists **role groups**. A role assigned directly to a service principal, user or any other non role-group assignee never appears there, even though the assignment is active. This view (badge tooltip on the Type column) and the Visualizer flag those direct assignments; `Get-ManagementRoleAssignment -Role <name>` shows them too.
+
 This is the workhorse view: most "why does this user have access?" questions are answered here. Selecting an assignment lights up **Visualize** in the floating action bar so you can jump directly to the diagram.
 
 ### 4. Scopes
