@@ -585,7 +585,7 @@ function Invoke-ExchangeGUI {
           <DataGrid x:Name="MainGrid"/>
         <Grid>
           <Grid x:Name="VizHost" Visibility="Collapsed" Background="White">
-            <ScrollViewer x:Name="VizScroll" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
+            <ScrollViewer x:Name="VizScroll" Background="#FAFAFA" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden">
               <Canvas x:Name="VizCanvas" Background="#FAFAFA" ClipToBounds="False"/>
             </ScrollViewer>
             <Border x:Name="VizPlaceholderBox" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -2785,16 +2785,30 @@ $($script:DlgResourcesXaml)
         }
     }
 
+    # Zoom about a point of the canvas. Moving the scale's centre while the scale is
+    # not 1 would shift the content, so the translation is corrected by the same
+    # amount: t' = t + (c - c') * (1 - s).
+    function Set-VizZoom {
+        param([double]$Scale, [double]$CenterX, [double]$CenterY)
+        if (-not $script:VizScale) { return }
+        $s = $script:VizScale.ScaleX
+        if ($script:VizTranslate) {
+            $script:VizTranslate.X += ($script:VizScale.CenterX - $CenterX) * (1 - $s)
+            $script:VizTranslate.Y += ($script:VizScale.CenterY - $CenterY) * (1 - $s)
+        }
+        $script:VizScale.CenterX = $CenterX
+        $script:VizScale.CenterY = $CenterY
+        $script:VizScale.ScaleX  = $Scale
+        $script:VizScale.ScaleY  = $Scale
+    }
+
     function Zoom-Viz {
         param([double]$Factor)
         if (-not $script:VizScale) { return }
         $newScale = [Math]::Min([Math]::Max($script:VizScale.ScaleX * $Factor, 0.2), 5.0)
         # Zoom from the canvas viewport centre when triggered by buttons
         $cv = $UI.VizCanvas
-        $script:VizScale.CenterX = $cv.ActualWidth  / 2
-        $script:VizScale.CenterY = $cv.ActualHeight / 2
-        $script:VizScale.ScaleX  = $newScale
-        $script:VizScale.ScaleY  = $newScale
+        Set-VizZoom -Scale $newScale -CenterX ($cv.ActualWidth / 2) -CenterY ($cv.ActualHeight / 2)
     }
 
     # Dispatcher: clears the canvas + (re)builds the pan/zoom transform, then draws
@@ -3100,8 +3114,10 @@ $($script:DlgResourcesXaml)
                 # element so users can keep dragging without hitting a wall.
                 $needW = $newX + $s.ActualWidth  + 60
                 $needH = $newY + $s.ActualHeight + 60
-                if ($needW -gt $t.Canvas.Width)  { $t.Canvas.Width  = $needW }
-                if ($needH -gt $t.Canvas.Height) { $t.Canvas.Height = $needH }
+                # Growing the canvas raises SizeChanged, which redraws the whole diagram
+                # (and puts every node back): stamp it so that redraw is skipped.
+                if ($needW -gt $t.Canvas.Width)  { $script:VizGrowStamp = [DateTime]::UtcNow; $t.Canvas.Width  = $needW }
+                if ($needH -gt $t.Canvas.Height) { $script:VizGrowStamp = [DateTime]::UtcNow; $t.Canvas.Height = $needH }
                 foreach ($lk in $t.Links) {
                     $ax = $newX + $lk.OffsetX
                     $ay = $newY + $lk.OffsetY
@@ -6754,15 +6770,24 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
         }
     })
 
-    $UI.VizCanvas.Add_SizeChanged({ if ($script:CurrentView -eq 'Visualizer') { Render-Visualizer } })
+    $UI.VizCanvas.Add_SizeChanged({
+        if ($script:CurrentView -ne 'Visualizer') { return }
+        # The canvas grew because a node is being dragged past its edge: keep the layout.
+        if ($null -ne $script:VizGrowStamp -and ([DateTime]::UtcNow - $script:VizGrowStamp).TotalMilliseconds -lt 800) { return }
+        Render-Visualizer
+    })
 
     # ---------------- Visualizer pan + zoom ----------------
     $script:VizPan = @{ Active = $false; StartX = 0; StartY = 0; OrigX = 0; OrigY = 0 }
+    # The canvas carries the pan/zoom transform, so the pointer is measured against
+    # its fixed parent: measured against the canvas it moves with the content and
+    # the delta stays near zero (the pan jitters).
+    $script:VizPanHost = $UI.VizScroll
     $UI.VizCanvas.Add_MouseLeftButtonDown({
         param($s, $e)
         # Pan only when clicking the empty canvas (not a node)
         if ($e.Source -ne $s) { return }
-        $p = $e.GetPosition($s)
+        $p = $e.GetPosition($script:VizPanHost)
         $script:VizPan.Active = $true
         $script:VizPan.StartX = $p.X; $script:VizPan.StartY = $p.Y
         if ($script:VizTranslate) {
@@ -6782,7 +6807,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
         param($s, $e)
         if (-not $script:VizPan.Active) { return }
         if (-not $script:VizTranslate)  { return }
-        $p = $e.GetPosition($s)
+        $p = $e.GetPosition($script:VizPanHost)
         $script:VizTranslate.X = $script:VizPan.OrigX + ($p.X - $script:VizPan.StartX)
         $script:VizTranslate.Y = $script:VizPan.OrigY + ($p.Y - $script:VizPan.StartY)
     })
@@ -6793,10 +6818,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
         $newScale = [Math]::Min([Math]::Max($script:VizScale.ScaleX * $factor, 0.2), 5.0)
         # Zoom centred on the mouse pointer for a natural feel
         $p = $e.GetPosition($s)
-        $script:VizScale.CenterX = $p.X
-        $script:VizScale.CenterY = $p.Y
-        $script:VizScale.ScaleX = $newScale
-        $script:VizScale.ScaleY = $newScale
+        Set-VizZoom -Scale $newScale -CenterX $p.X -CenterY $p.Y
         $e.Handled = $true
     })
 

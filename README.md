@@ -30,6 +30,7 @@ What's new in 1.8.0
 *   **Applications view**: the role assignments held by service principals (RBAC for Applications), with the role, whether it applies to the whole organization or to a scope (and which), the role type (built-in or custom) and the creation date. Chips: All, Whole organization, Scoped, Custom role. It reads nothing more than Role Assignments does.
 *   **Visualizer, a + on the Scope node**: opens the recipients the scope reaches. Up to 5 are drawn directly; beyond that, one bubble per recipient type with its count and its own +, which opens that type (60 at most). Up to 500 recipients are read, counted as 500+ beyond that.
 *   **Fix, My Cmdlets**: the view listed a single cmdlet instead of all the ones the account can run.
+*   **Fixes, Visualizer navigation**: dragging the background no longer jitters (the pointer was measured against the content that moves), zooming no longer makes the diagram jump, dragging a node to the edge no longer redraws the whole diagram and puts the nodes back, and the area outside the canvas is the same grey instead of white.
 
 What's new in 1.7.0
 -------------------
