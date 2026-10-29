@@ -2181,6 +2181,11 @@ $($script:DlgResourcesXaml)
     # The Exchange admin center (#/adminRoles) only lists role groups, so an
     # assignment to any other assignee type is invisible there.
     $EacDirectNote = 'Direct assignment: not listed in the Exchange admin center (Roles > Admin roles shows role groups only). Visible via Get-ManagementRoleAssignment.'
+    $BadgeRoleOrigin = @{
+        'Built-in role' = @{ Bg='#ECEFF1'; Fg='#37474F' }
+        'Custom role'   = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+        'Unknown role'  = @{ Bg='#FFF8E1'; Fg='#8D6E00' }
+    }
     $BadgeReach = @{
         'Whole organization' = @{ Bg='#FDE7E9'; Fg='#A4262C' }
         'Scoped'             = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
@@ -2253,7 +2258,8 @@ $($script:DlgResourcesXaml)
                 @{ Header='Role';         Path='Role';         Width=240; MinWidth=160 }
                 @{ Header='Applies to';   Path='Reach';        Width=170; MinWidth=140; Kind='Badge'; BadgeMap=$BadgeReach }
                 @{ Header='Scope';        Path='Scope';        Width='*'; MinWidth=180 }
-                @{ Header='Role origin';  Path='RoleOrigin';   Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeOrigin }
+                @{ Header='Role type';    Path='RoleOrigin';   Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeRoleOrigin }
+                @{ Header='Created';      Path='Created';      Width=150; MinWidth=120; Format='yyyy-MM-dd' }
                 @{ Header='Enabled';      Path='Enabled';      Width=90;  MinWidth=80 }
             )
         }
@@ -4103,7 +4109,7 @@ $($script:DlgResourcesXaml)
                 switch ($Chip) {
                     'whole organization' { return ($Row.Reach -eq 'Whole organization') }
                     'scoped'             { return ($Row.Reach -eq 'Scoped') }
-                    'custom role'        { return ($Row.RoleOrigin -eq 'Custom') }
+                    'custom role'        { return ($Row.RoleOrigin -eq 'Custom role') }
                 }
             }
             'Scopes' {

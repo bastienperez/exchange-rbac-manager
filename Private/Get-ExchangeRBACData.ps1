@@ -177,6 +177,7 @@ function Get-RBACRoleAssignments {
                     RoleAssignee              = $_.RoleAssigneeName
                     RoleAssigneeType          = $_.RoleAssigneeType
                     Enabled                   = $_.Enabled
+                    WhenCreated               = $_.WhenCreated
                     RecipientReadScope        = $readScope
                     RecipientWriteScope       = $writeScope
                     CustomRecipientReadScope  = $_.CustomRecipientReadScope
@@ -238,8 +239,13 @@ function Get-RBACApplicationAssignments {
         if (-not $scopeText) { $scopeText = 'Organization' }
         $scoped = ($scopeText -ne 'Organization')
 
-        $originValue = $originByRole["$($assignment.Role)"]
-        if (-not $originValue) { $originValue = 'Unknown' }
+        # Where the ROLE comes from (the assignment itself is always an admin's:
+        # an application is never assigned by default).
+        $originValue = switch ($originByRole["$($assignment.Role)"]) {
+            'Built-in' { 'Built-in role' }
+            'Custom'   { 'Custom role' }
+            default    { 'Unknown role' }
+        }
 
         $rows.Add([PSCustomObject]@{
                 Name        = $assignment.Name
@@ -248,6 +254,7 @@ function Get-RBACApplicationAssignments {
                 Reach       = if ($scoped) { 'Scoped' } else { 'Whole organization' }
                 Scope       = $scopeText
                 RoleOrigin  = $originValue
+                Created     = $assignment.WhenCreated
                 Enabled     = $assignment.Enabled
             })
     }
