@@ -196,6 +196,64 @@ function Get-RBACRoleAssignments {
     }
 }
 
+function Get-RBACApplicationAssignments {
+    <#
+    .SYNOPSIS
+        The role assignments held by applications (RBAC for Applications).
+    .DESCRIPTION
+        Keeps the assignments whose assignee is a service principal and adds, for
+        each, where it applies and where its role comes from:
+          - Reach: 'Whole organization' when the write scope is 'Organization',
+            'Scoped' when anything else (a management scope, an administrative
+            unit, an OU) limits it.
+          - RoleOrigin: Built-in or Custom, from Get-RBACRoles.
+        Nothing is read from Exchange here: both inputs are already loaded.
+    .PARAMETER Assignments
+        The output of Get-RBACRoleAssignments.
+    .PARAMETER Roles
+        The output of Get-RBACRoles.
+    .EXAMPLE
+        Get-RBACApplicationAssignments -Assignments (Get-RBACRoleAssignments) -Roles (Get-RBACRoles)
+    #>
+    [CmdletBinding()]
+    param(
+        [object[]]$Assignments,
+        [object[]]$Roles
+    )
+
+    $originByRole = @{}
+    foreach ($role in @($Roles)) {
+        if ($role -and $role.Name) { $originByRole["$($role.Name)"] = "$($role.Origin)" }
+    }
+
+    [System.Collections.Generic.List[PSCustomObject]]$rows = @()
+    foreach ($assignment in @($Assignments)) {
+        if ("$($assignment.RoleAssigneeType)" -notmatch 'ServicePrincipal') { continue }
+
+        # The scope as Get-RBACRoleAssignments writes it: 'Organization' when nothing
+        # limits the role, else the custom scope (with its filter), an administrative
+        # unit or another limit.
+        $scopeText = "$($assignment.RecipientWriteScope)"
+        if (-not $scopeText) { $scopeText = "$($assignment.RecipientReadScope)" }
+        if (-not $scopeText) { $scopeText = 'Organization' }
+        $scoped = ($scopeText -ne 'Organization')
+
+        $originValue = $originByRole["$($assignment.Role)"]
+        if (-not $originValue) { $originValue = 'Unknown' }
+
+        $rows.Add([PSCustomObject]@{
+                Name        = $assignment.Name
+                Application = $assignment.RoleAssignee
+                Role        = $assignment.Role
+                Reach       = if ($scoped) { 'Scoped' } else { 'Whole organization' }
+                Scope       = $scopeText
+                RoleOrigin  = $originValue
+                Enabled     = $assignment.Enabled
+            })
+    }
+    return @($rows | Sort-Object Application, Role)
+}
+
 function Get-RBACManagementScopes {
     <#
     .SYNOPSIS

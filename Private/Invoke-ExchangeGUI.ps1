@@ -430,6 +430,7 @@ function Invoke-ExchangeGUI {
           <ToggleButton x:Name="NavRoleGroups"  Style="{StaticResource NavButton}" Content="◈   Role Groups"/>
           <ToggleButton x:Name="NavRoles"       Style="{StaticResource NavButton}" Content="▤   Roles"/>
           <ToggleButton x:Name="NavAssignments" Style="{StaticResource NavButton}" Content="⇄   Role Assignments"/>
+          <ToggleButton x:Name="NavApplications" Style="{StaticResource NavButton}" Content="▣   Applications"/>
           <ToggleButton x:Name="NavScopes"      Style="{StaticResource NavButton}" Content="⊙   Scopes"/>
           <Border Height="1" Background="#4DFFFFFF" Margin="18,8"/>
           <ToggleButton x:Name="NavUserRights"  Style="{StaticResource NavButton}" Content="⌕   User Rights"/>
@@ -897,7 +898,7 @@ function Invoke-ExchangeGUI {
     foreach ($n in @(
             'TenantLabel','TenantName','ConnPulse','ConnStatus','BtnConnect','BtnDisconnect','ChkUseWAM','BtnWamInfo','VersionLabel',
             'LinkLinkedIn','LinkGitHub','LinkClidsys',
-            'NavRoleGroups','NavRoles','NavAssignments','NavScopes','NavUserRights','NavCommands','NavMyCmdlets','NavVisualizer','NavAudit',
+            'NavRoleGroups','NavRoles','NavAssignments','NavApplications','NavScopes','NavUserRights','NavCommands','NavMyCmdlets','NavVisualizer','NavAudit',
             'Crumbs','ViewTitle','ViewDesc','SearchHost','SearchBox','SuggestPopup','SuggestList','ChipsHost','ChipsHostBorder',
             'BtnFilterRow','BtnWrap','BtnAutoFit','GridModifiers',
             'ItemCount','ToolbarTools','ToolbarPrimary',
@@ -2175,6 +2176,10 @@ $($script:DlgResourcesXaml)
     # The Exchange admin center (#/adminRoles) only lists role groups, so an
     # assignment to any other assignee type is invisible there.
     $EacDirectNote = 'Direct assignment: not listed in the Exchange admin center (Roles > Admin roles shows role groups only). Visible via Get-ManagementRoleAssignment.'
+    $BadgeReach = @{
+        'Whole organization' = @{ Bg='#FDE7E9'; Fg='#A4262C' }
+        'Scoped'             = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
+    }
     $BadgeScopeType = @{
         'Recipient'          = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
         'Server'             = @{ Bg='#FFF3E0'; Fg='#E65100' }
@@ -2230,6 +2235,21 @@ $($script:DlgResourcesXaml)
                 @{ Header='Type';            Path='RoleAssigneeType';    Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeAssigneeType; BadgeTip=$EacDirectNote; BadgeTipSkip='RoleGroup' }
                 @{ Header='Read Scope';      Path='RecipientReadScope';  Width='*'; MinWidth=140 }
                 @{ Header='Write Scope';     Path='RecipientWriteScope'; Width='*'; MinWidth=140 }
+            )
+        }
+        Applications = @{
+            Crumbs = 'RBAC ▸ Applications'
+            Title  = 'Applications'
+            Desc   = 'Service principals that hold an Exchange application role (RBAC for Applications), and where each one applies.'
+            Chips  = @('all','whole organization','scoped','custom role')
+            FrozenColumns = 1
+            Columns = @(
+                @{ Header='Application';  Path='Application';  Width=240; MinWidth=160 }
+                @{ Header='Role';         Path='Role';         Width=240; MinWidth=160 }
+                @{ Header='Applies to';   Path='Reach';        Width=170; MinWidth=140; Kind='Badge'; BadgeMap=$BadgeReach }
+                @{ Header='Scope';        Path='Scope';        Width='*'; MinWidth=180 }
+                @{ Header='Role origin';  Path='RoleOrigin';   Width=130; MinWidth=110; Kind='Badge'; BadgeMap=$BadgeOrigin }
+                @{ Header='Enabled';      Path='Enabled';      Width=90;  MinWidth=80 }
             )
         }
         Scopes = @{
@@ -2626,6 +2646,7 @@ $($script:DlgResourcesXaml)
             RoleGroups  = 'ROLE GROUP'
             Roles       = 'ROLE'
             Assignments = 'ASSIGNMENT'
+            Applications = 'APPLICATION'
             Scopes      = 'SCOPE'
             UserRights  = 'USER RIGHT'
             Commands    = 'ROLE'
@@ -3827,6 +3848,7 @@ $($script:DlgResourcesXaml)
             'RoleGroups'  { 'Loading role groups…' }
             'Roles'       { 'Loading roles…' }
             'Assignments' { 'Loading role assignments…' }
+            'Applications' { 'Loading application assignments…' }
             'Scopes'      { 'Loading management scopes…' }
             'UserRights'  { 'Loading…' }
             'Commands'    { 'Loading…' }
@@ -3870,6 +3892,18 @@ $($script:DlgResourcesXaml)
                     $UI.MainGrid.ItemsSource = $data
                     $UI.ItemCount.Text = "$(@($data).Count) items"
                     Set-Status "Loaded $(@($data).Count) role assignments." 'ok'
+                }
+                'Applications' {
+                    Set-Status 'Loading application assignments…'
+                    if (-not $script:Cache.Assignments) { $script:Cache.Assignments = Get-RBACRoleAssignments }
+                    $data = @(Get-RBACApplicationAssignments -Assignments $script:Cache.Assignments -Roles (Get-RBACRoles))
+                    $script:Cache.Applications = $data
+                    # Same route as Scopes: the first paint goes through Apply-Filters.
+                    $UI.MainGrid.ItemsSource = $null
+                    Apply-Filters
+                    $UI.ItemCount.Text = "$(@($data).Count) items"
+                    $wide = @($data | Where-Object { $_.Reach -eq 'Whole organization' }).Count
+                    Set-Status "Loaded $(@($data).Count) application assignments, $wide on the whole organization." 'ok'
                 }
                 'Scopes' {
                     Set-Status 'Loading management scopes…'
@@ -4009,6 +4043,13 @@ $($script:DlgResourcesXaml)
                     'disabled' { return ([bool]$Row.Enabled -eq $false) }
                 }
             }
+            'Applications' {
+                switch ($Chip) {
+                    'whole organization' { return ($Row.Reach -eq 'Whole organization') }
+                    'scoped'             { return ($Row.Reach -eq 'Scoped') }
+                    'custom role'        { return ($Row.RoleOrigin -eq 'Custom') }
+                }
+            }
             'Scopes' {
                 $t = "$($Row.ScopeRestrictionType)"
                 switch ($Chip) {
@@ -4035,6 +4076,7 @@ $($script:DlgResourcesXaml)
             'RoleGroups'  { $src = $script:Cache.RoleGroups }
             'Roles'       { $src = $script:Cache.Roles }
             'Assignments' { $src = $script:Cache.Assignments }
+            'Applications' { $src = $script:Cache.Applications }
             'Scopes'      { $src = $script:Cache.Scopes }
             'MyCmdlets'   { $src = $script:Cache.MyCmdlets }
             'Audit'       { $src = $script:Cache.Audit }
@@ -4215,6 +4257,7 @@ $($script:DlgResourcesXaml)
         $btnMap = @{
             RoleGroups  = $UI.NavRoleGroups;  Roles       = $UI.NavRoles
             Assignments = $UI.NavAssignments; Scopes      = $UI.NavScopes
+            Applications = $UI.NavApplications
             UserRights  = $UI.NavUserRights;  Commands    = $UI.NavCommands
             MyCmdlets   = $UI.NavMyCmdlets
             Visualizer  = $UI.NavVisualizer;  Audit       = $UI.NavAudit
@@ -4295,6 +4338,10 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label 'Edit'            -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Do-EditAssignment }))
                 $null = $list.Add((New-ActionButton -Label '⤳  Visualize'   -Style 'BtnDark'    -Kind 'Selection'   -OnClick { Visualize-Selected }))
                 $null = $list.Add((New-ActionButton -Label '🗑  Delete'      -Style 'BtnDarkDanger' -Kind 'Destructive' -OnClick { Do-DeleteAssignment }))
+            }
+            'Applications' {
+                $null = $list.Add((New-ActionButton -Label '⟳  Refresh'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Reload-CurrentView }))
+                $null = $list.Add((New-ActionButton -Label 'Export CSV'      -Style 'ActionBtn'  -Kind 'Tool'        -OnClick { Export-CurrentView }))
             }
             'Scopes' {
                 $null = $list.Add((New-ActionButton -Label '+ New Scope'      -Style 'PrimaryBtn' -Kind 'Primary'     -OnClick { Do-NewScope }))
@@ -6389,7 +6436,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     $UI.LinkClidsys.Add_MouseLeftButtonDown( { & $openLink 'https://clidsys.com' })
 
     # Make ToggleButton click-only-go-on (prevent uncheck of active)
-    $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavScopes,
+    $navBtns = @($UI.NavRoleGroups,$UI.NavRoles,$UI.NavAssignments,$UI.NavApplications,$UI.NavScopes,
                  $UI.NavUserRights,$UI.NavCommands,$UI.NavMyCmdlets,$UI.NavVisualizer,$UI.NavAudit)
     foreach ($btn in $navBtns) {
         $btn.Add_PreviewMouseDown({
@@ -6400,6 +6447,7 @@ When the box is unchecked, the module passes -DisableWAM to Connect-ExchangeOnli
     $UI.NavRoleGroups.Add_Click({ Switch-View -View 'RoleGroups' })
     $UI.NavRoles.Add_Click({       Switch-View -View 'Roles' })
     $UI.NavAssignments.Add_Click({ Switch-View -View 'Assignments' })
+    $UI.NavApplications.Add_Click({ Switch-View -View 'Applications' })
     $UI.NavScopes.Add_Click({      Switch-View -View 'Scopes' })
     $UI.NavUserRights.Add_Click({  Switch-View -View 'UserRights' })
     $UI.NavCommands.Add_Click({    Switch-View -View 'Commands' })
