@@ -14,7 +14,7 @@ Features
 --------
 
 *   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other). Reachable from Role Assignments **and** from Roles / Role Groups / Scopes (pick among the related assignments). Resolved scope **names** (not just the `CustomRecipientScope` type), an optional fan of the scope's resolved members, and export to **PNG** or a self-contained **interactive HTML** file
-*   **Nine integrated views** - Role Groups, Roles, Role Assignments, Scopes, Scope membership preview, User Rights, Command Lookup, My Cmdlets, Audit Log
+*   **Ten integrated views** - Role Groups, Roles, Role Assignments, Applications, Scopes, Scope membership preview, User Rights, Command Lookup, My Cmdlets, Audit Log
 *   **My Cmdlets** - lists the cmdlets the connected account can actually run in this session, with each cmdlet's specific parameters; live-filterable by name or parameter
 *   **Edit role assignments** - change the write scope (predefined / custom recipient scope picker / OU DN / clear) and the enabled flag, with a built-in cmdlet preview before any change is run
 *   **Scope membership preview** - validate a `RecipientRestrictionFilter` *before* attaching it to an assignment
@@ -23,6 +23,13 @@ Features
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
+
+What's new in 1.8.0
+-------------------
+
+*   **Applications view**: the role assignments held by service principals (RBAC for Applications), with the role, whether it applies to the whole organization or to a scope (and which), the role type (built-in or custom) and the creation date. Chips: All, Whole organization, Scoped, Custom role. It reads nothing more than Role Assignments does.
+*   **Visualizer, a + on the Scope node**: opens the recipients the scope reaches. Up to 5 are drawn directly; beyond that, one bubble per recipient type with its count and its own +, which opens that type (60 at most). Up to 500 recipients are read, counted as 500+ beyond that.
+*   **Fix, My Cmdlets**: the view listed a single cmdlet instead of all the ones the account can run.
 
 What's new in 1.7.0
 -------------------
