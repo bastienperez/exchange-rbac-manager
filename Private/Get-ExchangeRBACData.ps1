@@ -325,5 +325,5 @@ function Get-RBACSessionCmdlets {
             Parameters = ($params -join ' | ')
         }
     }
-    return ,@($rows)
+    return @($rows)
 }
