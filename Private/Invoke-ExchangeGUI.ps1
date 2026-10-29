@@ -933,7 +933,12 @@ function Invoke-ExchangeGUI {
     $script:VizScopeMembers   = $null
     $script:VizScopeInfo      = $null   # the resolved Get-ManagementScope object
     $script:VizScopeTruncated = $false  # preview hit the cap below
-    $script:VizScopeCap       = 60      # members drawn on the canvas at most
+    $script:VizScopeCap       = 500     # recipients read from the scope preview at most
+    $script:VizScopeAll       = $null   # every recipient read (before grouping), null = not resolved
+    $script:VizScopeExpanded  = $false  # the "+" of the Scope node is open
+    $script:VizExpandedTypes  = @{}     # recipient types whose bubble is open
+    $script:VizDirectMax      = 5       # up to this many recipients are drawn directly, more are grouped in bubbles
+    $script:VizTypeDrawMax    = 60      # recipients drawn for one open type at most
     # Cache of resolved custom-scope names keyed "<assignmentName>|Write|Read".
     # The bulk Get-ManagementRoleAssignment often returns CustomRecipient*Scope /
     # *ScopeDetails EMPTY (e.g. AutoManaged-* assignments); the name only comes
@@ -2859,8 +2864,8 @@ $($script:DlgResourcesXaml)
         $writeScopeName = Get-VizScopeDisplay -Assignment $a -Which Write
         $readScopeName  = Get-VizScopeDisplay -Assignment $a -Which Read
         $scopeSub = "Read: $readScopeName"
-        if ($null -ne $script:VizScopeMembers) {
-            $mCount   = @($script:VizScopeMembers).Count
+        if ($null -ne $script:VizScopeAll) {
+            $mCount   = @($script:VizScopeAll | Where-Object { $null -ne $_ }).Count
             $scopeSub = "Read: $readScopeName`n$mCount member$(if ($mCount -eq 1) { '' } else { 's' })$(if ($script:VizScopeTruncated) { '+' } else { '' })"
         }
 
@@ -2925,7 +2930,7 @@ $($script:DlgResourcesXaml)
         # -- Also track spoke nodes ----------------------------------------
         foreach ($s in $spokes) {
             $bounds.minX = [Math]::Min($bounds.minX, $s.X)
-            $bounds.maxX = [Math]::Max($bounds.maxX, $s.X + 200)
+            $bounds.maxX = [Math]::Max($bounds.maxX, $s.X + 200 + 22)
             $bounds.minY = [Math]::Min($bounds.minY, $s.Y)
             $bounds.maxY = [Math]::Max($bounds.maxY, $s.Y + 60)
         }
@@ -2965,7 +2970,7 @@ $($script:DlgResourcesXaml)
             $null = $memberPositions.Add(@{ X = $x; Y = $y; NcX = $ncX; NcY = $ncY; Angle = $angle; Ring = $ring })
 
             $bounds.minX = [Math]::Min($bounds.minX, $x)
-            $bounds.maxX = [Math]::Max($bounds.maxX, $x + $memberNodeW)
+            $bounds.maxX = [Math]::Max($bounds.maxX, $x + $memberNodeW + 24)
             $bounds.minY = [Math]::Min($bounds.minY, $y)
             $bounds.maxY = [Math]::Max($bounds.maxY, $y + $memberNodeH)
         }
@@ -3000,6 +3005,36 @@ $($script:DlgResourcesXaml)
             $poly.Fill   = $color
             $null = $canvas.Children.Add($poly)
             return $poly
+        }
+
+        # -- Helper: the round "+" / "-" button stuck to a node's right edge ----
+        # White disc, black outline and sign. The click runs the scriptblock kept
+        # on its Tag (the handler cannot rely on this scope).
+        $addExpander = {
+            param([System.Windows.Controls.Canvas]$canvas, [double]$left, [double]$top, [string]$symbol, [scriptblock]$onClick)
+            $btn = [System.Windows.Controls.Border]::new()
+            $btn.Width = 20; $btn.Height = 20
+            $btn.CornerRadius = '10'
+            $btn.Background = '#FFFFFF'
+            $btn.BorderBrush = '#201F1E'
+            $btn.BorderThickness = 1.5
+            $tbx = [System.Windows.Controls.TextBlock]::new()
+            $tbx.Text = $symbol; $tbx.FontWeight = 'Bold'; $tbx.FontSize = 14
+            $tbx.Foreground = '#201F1E'
+            $tbx.HorizontalAlignment = 'Center'; $tbx.VerticalAlignment = 'Center'
+            $tbx.Margin = '0,-2,0,0'
+            $btn.Child = $tbx
+            $btn.Cursor = [System.Windows.Input.Cursors]::Hand
+            $btn.Tag = $onClick
+            $btn.Add_MouseLeftButtonDown({
+                param($s, $e)
+                $e.Handled = $true
+                & $s.Tag
+            })
+            [System.Windows.Controls.Canvas]::SetLeft($btn, $left)
+            [System.Windows.Controls.Canvas]::SetTop($btn,  $top)
+            $null = $canvas.Children.Add($btn)
+            return $btn
         }
 
         # -- Helper: add drag support to a Border --------------------------
@@ -3064,6 +3099,12 @@ $($script:DlgResourcesXaml)
                 foreach ($lk in $t.Links) {
                     $ax = $newX + $lk.OffsetX
                     $ay = $newY + $lk.OffsetY
+                    # A "+" / "-" button stuck to the node follows it.
+                    if ($lk.Follower) {
+                        [System.Windows.Controls.Canvas]::SetLeft($lk.Follower, $ax)
+                        [System.Windows.Controls.Canvas]::SetTop($lk.Follower,  $ay)
+                        continue
+                    }
                     if ($lk.End -eq 'start') {
                         $lk.Line.X1 = $ax; $lk.Line.Y1 = $ay
                     } else {
@@ -3248,6 +3289,12 @@ $($script:DlgResourcesXaml)
                     })
                 }
             }
+            # The Scope spoke (index 2) carries the "+" that opens its recipients.
+            if ($si -eq 2) {
+                $sym = if ($script:VizScopeExpanded) { [string][char]0x2212 } else { '+' }
+                $expBtn = & $addExpander $cv ($s.X + $offsetX + 199) ($s.Y + $offsetY + 20) $sym { Toggle-VizScope }
+                $null = $links.Add(@{ Follower = $expBtn; OffsetX = 199; OffsetY = 20 })
+            }
             # The Scope spoke (index 2) anchors the START of every member line + its arrow.
             if ($si -eq 2) {
                 for ($mi = 0; $mi -lt $memberLines.Count; $mi++) {
@@ -3292,8 +3339,8 @@ $($script:DlgResourcesXaml)
                         $root = "$($script:VizScopeInfo.RecipientRoot)".Trim()
                         if ($root) { $rows += [pscustomobject]@{ Key='Recipient root'; Value=$root } }
                     }
-                    if ($null -ne $script:VizScopeMembers) {
-                        $mc = @($script:VizScopeMembers | Where-Object { $null -ne $_ }).Count
+                    if ($null -ne $script:VizScopeAll) {
+                        $mc = @($script:VizScopeAll | Where-Object { $null -ne $_ }).Count
                         $rows += [pscustomobject]@{ Key='Members resolved'; Value="$mc$(if ($script:VizScopeTruncated) { '+' } else { '' })" }
                     }
                     $spokeInfo = @{ Title=$writeScopeName; Badge='SCOPE'; Rows=$rows }
@@ -3353,18 +3400,19 @@ $($script:DlgResourcesXaml)
         for ($i = 0; $i -lt $members.Count; $i++) {
             $pos  = $memberPositions[$i]
             $m    = $members[$i]
+            $isBubble = [bool]$m.IsBubble
             $node = [System.Windows.Controls.Border]::new()
             $node.Width        = $memberNodeW
-            $node.CornerRadius = '6'
+            $node.CornerRadius = if ($isBubble) { '11' } else { '6' }
             $node.Background   = $memPal.Bg
             $node.BorderBrush  = $memPal.Border
-            $node.BorderThickness = 1.2
-            $node.Padding      = '6,2'
+            $node.BorderThickness = if ($isBubble) { 1.6 } else { 1.2 }
+            $node.Padding      = '8,2'
             $tb = [System.Windows.Controls.TextBlock]::new()
             $tb.Text         = if ($m.Name) { "$($m.Name)" } else { "$($m.PrimarySmtpAddress)" }
             $tb.FontSize     = 9; $tb.FontWeight = 'SemiBold'
             $tb.TextTrimming = 'CharacterEllipsis'; $tb.Foreground = $memPal.Fg
-            $tb.ToolTip      = "$($m.Name)`n$($m.PrimarySmtpAddress)`n$($m.RecipientTypeDetails)"
+            $tb.ToolTip      = if ($isBubble) { "$($m.Count) recipient(s) of type $($m.BubbleType)" } else { "$($m.Name)`n$($m.PrimarySmtpAddress)`n$($m.RecipientTypeDetails)" }
             $node.Child = $tb
             [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX)
             [System.Windows.Controls.Canvas]::SetTop($node,  $pos.Y + $offsetY)
@@ -3377,6 +3425,14 @@ $($script:DlgResourcesXaml)
                 OffsetY = $memberNodeH / 2
                 Arrow   = $memberArrows[$i]
             })
+            if ($isBubble) {
+                $typeName = "$($m.BubbleType)"
+                $bubbleSym = if ($m.Expanded) { [string][char]0x2212 } else { '+' }
+                $bubbleBtn = & $addExpander $cv ($pos.X + $offsetX + $memberNodeW - 1) ($pos.Y + $offsetY + 1) $bubbleSym ([scriptblock]::Create("Toggle-VizType -Type '$($typeName -replace "'", "''")'"))
+                $null = $links.Add(@{ Follower = $bubbleBtn; OffsetX = ($memberNodeW - 1); OffsetY = 1 })
+                & $makeDraggable $node $links $null
+                continue
+            }
             $memInfo = @{
                 Title="$($m.Name)"; Badge='SCOPE MEMBER'
                 Rows=@(
@@ -4373,7 +4429,7 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label '➕ Zoom in'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz 1.2 }))
                 $null = $list.Add((New-ActionButton -Label '➖ Zoom out' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz (1 / 1.2) }))
                 $null = $list.Add((New-ActionButton -Label '⌖ Center'   -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Reset-VizTransform; Render-Visualizer }))
-                $null = $list.Add((New-ActionButton -Label '👥 Scope members' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Show-VizScopeMembers }))
+                $null = $list.Add((New-ActionButton -Label '👥 Scope members' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Toggle-VizScope }))
                 $null = $list.Add((New-ActionButton -Label 'Export PNG'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizPng }))
                 $null = $list.Add((New-ActionButton -Label 'Export HTML' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizHtml }))
             }
@@ -5412,6 +5468,66 @@ $($script:DlgResourcesXaml)
         $script:VizScopeMembers   = $null
         $script:VizScopeInfo      = $null
         $script:VizScopeTruncated = $false
+        $script:VizScopeAll       = $null
+        $script:VizScopeExpanded  = $false
+        $script:VizExpandedTypes  = @{}
+    }
+
+    # What the canvas draws off the Scope node, from the recipients read: all of
+    # them when there are $VizDirectMax or fewer, else one bubble per recipient
+    # type (its count, a "+" to open it). An open type draws its recipients
+    # (up to $VizTypeDrawMax) after its bubble.
+    function Update-VizScopeDrawItems {
+        if (-not $script:VizScopeExpanded -or $null -eq $script:VizScopeAll) {
+            $script:VizScopeMembers = $null
+            return
+        }
+        $all = @($script:VizScopeAll | Where-Object { $null -ne $_ })
+        if ($all.Count -le $script:VizDirectMax) {
+            $script:VizScopeMembers = $all
+            return
+        }
+        $items = [System.Collections.Generic.List[object]]::new()
+        $groups = @($all | Group-Object -Property RecipientTypeDetails | Sort-Object -Property Count -Descending)
+        foreach ($g in $groups) {
+            $type = "$($g.Name)"
+            $open = [bool]$script:VizExpandedTypes[$type]
+            $readable = if ($type) { $type -creplace '(?<=[a-z])(?=[A-Z])', ' ' } else { 'Other' }
+            $more = if ($script:VizScopeTruncated) { '+' } else { '' }
+            $null = $items.Add([pscustomobject]@{
+                    IsBubble   = $true
+                    BubbleType = $type
+                    Expanded   = $open
+                    Count      = $g.Count
+                    Name       = "$($g.Count)$more $readable"
+                })
+            if ($open) {
+                foreach ($m in @($g.Group | Select-Object -First $script:VizTypeDrawMax)) { $null = $items.Add($m) }
+            }
+        }
+        $script:VizScopeMembers = @($items)
+    }
+
+    # The "+" of the Scope node: reads the recipients once, then opens or closes.
+    function Toggle-VizScope {
+        if ($script:VizScopeExpanded) {
+            $script:VizScopeExpanded = $false
+            Update-VizScopeDrawItems
+            Render-Visualizer
+            return
+        }
+        if ($null -eq $script:VizScopeAll) { Show-VizScopeMembers; return }
+        $script:VizScopeExpanded = $true
+        Update-VizScopeDrawItems
+        Render-Visualizer
+    }
+
+    # The "+" of a bubble: opens or closes one recipient type.
+    function Toggle-VizType {
+        param([string]$Type)
+        $script:VizExpandedTypes[$Type] = -not [bool]$script:VizExpandedTypes[$Type]
+        Update-VizScopeDrawItems
+        Render-Visualizer
     }
 
     # Set the Visualizer subject (one of assignment / user / role), clearing the
@@ -5829,14 +5945,17 @@ $($script:DlgResourcesXaml)
 
             $script:VizScopeInfo      = $scope
             $script:VizScopeTruncated = ($recipients.Count -ge $cap)
-            $script:VizScopeMembers   = $recipients
+            $script:VizScopeAll       = $recipients
+            $script:VizScopeExpanded  = $true
+            $script:VizExpandedTypes  = @{}
+            Update-VizScopeDrawItems
             Render-Visualizer
 
             if ($recipients.Count -eq 0) {
                 Set-Status "Scope '$scopeName' currently matches no recipients." 'warn'
             }
             elseif ($script:VizScopeTruncated) {
-                Set-Status "Showing first $cap member(s) of scope '$scopeName' (truncated; refine the filter to narrow)." 'warn'
+                Set-Status "Read the first $cap member(s) of scope '$scopeName' (truncated; refine the filter to narrow)." 'warn'
             }
             else {
                 Set-Status "$($recipients.Count) member(s) in scope '$scopeName'." 'ok'
