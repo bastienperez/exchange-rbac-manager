@@ -935,6 +935,7 @@ function Invoke-ExchangeGUI {
     $script:VizScopeTruncated = $false  # preview hit the cap below
     $script:VizScopeCap       = 500     # recipients read from the scope preview at most
     $script:VizScopeAll       = $null   # every recipient read (before grouping), null = not resolved
+    $script:VizLayout         = 'Blocks' # fan layout: Blocks | Fan | Rings (toolbar button)
     $script:VizScopeExpanded  = $false  # the "+" of the Scope node is open
     $script:VizExpandedTypes  = @{}     # recipient types whose bubble is open
     $script:VizDirectMax      = 5       # up to this many recipients are drawn directly, more are grouped in bubbles
@@ -957,14 +958,41 @@ function Invoke-ExchangeGUI {
     # Shared cmdlet verb -> group classification + colour palette. Defined once at
     # script scope so the WPF visualizer render AND the interactive HTML export
     # colour-code cmdlets identically.
-    # Look borrowed from 365Boost's Cytoscape graph: a soft tint fill, a full
-    # accent border and a dark text of the same hue; grey, light edges.
+    # Object colours follow 365Boost (css/tokens.css and docs/dev/object-colors.md):
+    # one hue per family. Graph marks (node border + tinted fill) take the
+    # --365b-graph-fam-* hues; badges and text take the --365b-cat-* ones.
+    #   user     -> users, mailboxes          group -> security / mail groups
+    #   app      -> service principals        role  -> roles AND role groups
+    #   device   -> computers                 ca    -> scopes (the "where")
+    #   other    -> everything else
+    # intune (magenta) and warn (orange, 365Boost's warning / loop hue) are only used by
+    # the cmdlet verb groups below, so a verb never wears the colour of a node.
+    $script:VizFam = @{ user='#2A78D6'; group='#4A3AA7'; device='#109E94'; app='#008300'; role='#E34948'; ca='#EDA100'; other='#71717A'; intune='#B3399A'; warn='#EA580C' }
+    $script:VizCat = @{ user='#004EB3'; group='#7C3AED'; device='#0F766E'; app='#15803D'; role='#B91C1C'; ca='#A15C00'; other='#71717A'; intune='#9D2C86'; warn='#C2410C' }
+    $script:VizNodeText = '#27272A'
+    # Lighten a #rrggbb toward white by T (0..1), as tint() in 365Boost's js/hub-graph.js.
+    function Get-VizTint {
+        param([string]$Hex, [double]$T)
+        $mix = { param($c) [int][Math]::Round($c + (255 - $c) * $T) }
+        $r = [Convert]::ToInt32($Hex.Substring(1, 2), 16)
+        $g = [Convert]::ToInt32($Hex.Substring(3, 2), 16)
+        $b = [Convert]::ToInt32($Hex.Substring(5, 2), 16)
+        return ('#{0:X2}{1:X2}{2:X2}' -f (& $mix $r), (& $mix $g), (& $mix $b))
+    }
+    # A node palette: soft tint fill (0.82 like 365Boost's NODE_FILL_TINT), full accent border.
+    function New-VizPalette {
+        param([string]$Family, [double]$Tint = 0.82)
+        return @{ Bg = (Get-VizTint -Hex $script:VizFam[$Family] -T $Tint); Border = $script:VizFam[$Family]; Fg = $script:VizNodeText }
+    }
+    # Cmdlet verb groups, paler (0.9) than the object nodes. They avoid the hues
+    # of the nodes (role red, scope amber, who green): Read teal, Modify magenta,
+    # Destructive orange, Create blue, Other grey.
     $script:VizVerbPalettes = @{
-        Read        = @{ Bg='#F0FDF4'; Border='#15803D'; Fg='#14532D' } # green
-        Modify      = @{ Bg='#FFFBEB'; Border='#B45309'; Fg='#78350F' } # amber
-        Destructive = @{ Bg='#FEF2F2'; Border='#B91C1C'; Fg='#7F1D1D' } # red
-        Create      = @{ Bg='#EDF5FF'; Border='#004EB3'; Fg='#003373' } # blue
-        Other       = @{ Bg='#F5F3FF'; Border='#7C3AED'; Fg='#4C1D95' } # purple
+        Read        = (New-VizPalette -Family 'device' -Tint 0.9)
+        Modify      = (New-VizPalette -Family 'intune' -Tint 0.9)
+        Destructive = (New-VizPalette -Family 'warn'   -Tint 0.9)
+        Create      = (New-VizPalette -Family 'user'   -Tint 0.9)
+        Other       = (New-VizPalette -Family 'other'  -Tint 0.9)
     }
     $script:VizVerbToGroup = @{
         'Get' = 'Read'; 'Find' = 'Read'; 'Search' = 'Read'; 'Test' = 'Read'; 'Measure' = 'Read'
@@ -973,21 +1001,178 @@ function Invoke-ExchangeGUI {
         'New' = 'Create'; 'Add' = 'Create'; 'Enable' = 'Create'; 'Start' = 'Create'; 'Install' = 'Create'
     }
     $script:VizGroupOrder    = @{ Read=0; Modify=1; Destructive=2; Create=3; Other=4 }
-    $script:VizMemberPalette = @{ Bg='#F0FDFA'; Border='#0F766E'; Fg='#134E4A' } # scope members
-    $script:VizRolePalette   = @{ Bg='#FEF2F2'; Border='#B91C1C'; Fg='#7F1D1D' } # What
-    $script:VizScopePalette  = @{ Bg='#FFFBEB'; Border='#A15C00'; Fg='#78350F' } # Where
-    $script:VizHubPalette    = @{ Bg='#004EB3'; Border='#004EB3'; Fg='#FFFFFF' } # centre node: solid fill
+    $script:VizMemberPalette = (New-VizPalette -Family 'other')  # members of an unknown recipient type
+    $script:VizRolePalette   = (New-VizPalette -Family 'role')   # What (a role is the role family)
+    $script:VizScopePalette  = (New-VizPalette -Family 'ca')     # Where (365Boost colours "where" objects amber)
+    # Centre node: solid fill, white text, like the centre of 365Boost's graphs. Neutral on
+    # purpose: the assignment is not a user, a group or a role, so it takes none of their hues.
+    $script:VizHubPalette    = @{ Bg = $script:VizNodeText; Border = $script:VizNodeText; Fg = '#FFFFFF' }
     $script:VizEdgeColor     = '#A1A1AA'
-    # Who: one hue per assignee family, like 365Boost's object type accents.
-    function Get-VizAssigneePalette {
+    # Items of a fan (cmdlets of the Role, members of the Scope) laid out as a
+    # block of rows and columns on the free side of their node, instead of a ring
+    # around it: wide short boxes on a circle overlap each other, the hub and
+    # their own parent. Returns the item centres in order (same-verb cmdlets stay
+    # contiguous because a column is filled before the next one starts).
+    #   Left : columns grow leftwards from the node, up to $MaxRows rows tall.
+    #   Down : rows grow downwards below the node, up to $MaxCols boxes wide.
+    function Get-VizBlockCentres {
+        param(
+            [int]$Count, [double]$NodeX, [double]$NodeY, [double]$NodeW, [double]$NodeH,
+            [double]$ItemW, [double]$ItemH,
+            [ValidateSet('Left','Down')][string]$Direction,
+            [int]$MaxRows = 12, [int]$MaxCols = 4
+        )
+        $gapX = 20; $gapY = 8; $clear = 70
+        $out = [System.Collections.Generic.List[hashtable]]::new()
+        if ($Direction -eq 'Left') {
+            $rows = [Math]::Max(1, [Math]::Min($Count, $MaxRows))
+            for ($i = 0; $i -lt $Count; $i++) {
+                $col = [int][Math]::Floor($i / $rows); $row = $i % $rows
+                $x = $NodeX - $NodeW / 2 - $clear - $ItemW / 2 - $col * ($ItemW + $gapX)
+                $y = $NodeY + ($row - ($rows - 1) / 2) * ($ItemH + $gapY)
+                $null = $out.Add(@{ X = $x; Y = $y })
+            }
+        }
+        else {
+            $cols = [Math]::Max(1, [Math]::Min($Count, $MaxCols))
+            for ($i = 0; $i -lt $Count; $i++) {
+                $row = [int][Math]::Floor($i / $cols); $col = $i % $cols
+                $x = $NodeX + ($col - ($cols - 1) / 2) * ($ItemW + $gapX)
+                $y = $NodeY + $NodeH / 2 + $clear + $ItemH / 2 + $row * ($ItemH + $gapY)
+                $null = $out.Add(@{ X = $x; Y = $y })
+            }
+        }
+        return , $out
+    }
+    # Fan layouts for the cmdlets (around the Role) and the members (around the
+    # Scope). Mode: Blocks (rows and columns on the free side), Fan (rings on the
+    # half-plane facing away from the hub) or Rings (full circles). Every item
+    # comes back as @{ X; Y; W; H } (centre and size) so Move-VizOverlaps can
+    # clear what is left to collide.
+    function Get-VizFanCentres {
+        param(
+            [ValidateSet('Blocks','Fan','Rings')][string]$Mode,
+            [int]$Count, [double]$NodeX, [double]$NodeY, [double]$NodeW, [double]$NodeH,
+            [double]$ItemW, [double]$ItemH, [double]$FromX, [double]$FromY,
+            [ValidateSet('Left','Down')][string]$BlockDirection
+        )
+        if ($Mode -eq 'Blocks') {
+            $items = Get-VizBlockCentres -Count $Count -NodeX $NodeX -NodeY $NodeY -NodeW $NodeW -NodeH $NodeH `
+                -ItemW $ItemW -ItemH $ItemH -Direction $BlockDirection
+            foreach ($it in $items) { $it.W = $ItemW; $it.H = $ItemH }
+            return , $items
+        }
+        $out  = [System.Collections.Generic.List[hashtable]]::new()
+        $span = if ($Mode -eq 'Rings') { 2 * [Math]::PI } else { 200 * [Math]::PI / 180 }
+        # Start on the bearing hub -> node so items fan out away from the hub.
+        $base = [Math]::Atan2($NodeY - $FromY, $NodeX - $FromX)
+        $r    = [Math]::Max(210, $NodeW / 2 + $ItemW / 2 + 40)
+        $gap  = $ItemH * 2 + 30
+        $left = $Count
+        while ($left -gt 0) {
+            # Room for a box per ~0.8 of its width along the arc of this ring.
+            $cap = [Math]::Max(1, [int][Math]::Floor($r * $span / ($ItemW * 0.8)))
+            $n   = [Math]::Min($left, $cap)
+            for ($k = 0; $k -lt $n; $k++) {
+                $ang = if ($Mode -eq 'Rings') { $base + $span * $k / $n } else { $base - $span / 2 + $span * ($k + 0.5) / $n }
+                $null = $out.Add(@{ X = $NodeX + $r * [Math]::Cos($ang); Y = $NodeY + $r * [Math]::Sin($ang); W = $ItemW; H = $ItemH })
+            }
+            $left -= $n
+            $r += $gap
+        }
+        return , $out
+    }
+
+    # Safety net after any layout, borrowed from 365Boost (removeOverlaps in
+    # js/graph-expand.js): pushes the moving boxes apart, and off the fixed ones,
+    # until none overlaps. -Fixed and -Moving hold @{ X; Y; W; H } (centre, size);
+    # the moving ones are updated in place.
+    function Move-VizOverlaps {
+        param([array]$Fixed, [array]$Moving, [double]$Margin = 14, [int]$Iterations = 40,
+              [double]$OriginX = 0, [double]$OriginY = 0)
+        $all = @($Fixed) + @($Moving)
+        $n = $all.Count; $nf = @($Fixed).Count
+        if ($n -lt 2 -or @($Moving).Count -eq 0) { return }
+        $x = [double[]]::new($n); $y = [double[]]::new($n); $w = [double[]]::new($n); $h = [double[]]::new($n)
+        for ($i = 0; $i -lt $n; $i++) { $x[$i] = $all[$i].X; $y[$i] = $all[$i].Y; $w[$i] = $all[$i].W; $h[$i] = $all[$i].H }
+        for ($it = 0; $it -lt $Iterations; $it++) {
+            $moved = $false
+            for ($p = 0; $p -lt $n; $p++) {
+                for ($q = $p + 1; $q -lt $n; $q++) {
+                    if ($q -lt $nf) { continue }                 # both fixed
+                    $dx = $x[$q] - $x[$p]; $dy = $y[$q] - $y[$p]
+                    $ox = ($w[$p] + $w[$q]) / 2 + $Margin - [Math]::Abs($dx)
+                    $oy = ($h[$p] + $h[$q]) / 2 + $Margin - [Math]::Abs($dy)
+                    if ($ox -le 0 -or $oy -le 0) { continue }
+                    $moved = $true
+                    $mp = if ($p -lt $nf) { 0.0 } else { 0.5 }
+                    $mq = 1.0 - $mp
+                    if ($ox -lt $oy) {
+                        $s = if ($dx -gt 0) { 1 } elseif ($dx -lt 0) { -1 } elseif (($p + $q) % 2) { 1 } else { -1 }
+                        $x[$p] -= $s * ($ox + 0.5) * $mp; $x[$q] += $s * ($ox + 0.5) * $mq
+                    }
+                    else {
+                        $s = if ($dy -ge 0) { 1 } else { -1 }
+                        $y[$p] -= $s * ($oy + 0.5) * $mp; $y[$q] += $s * ($oy + 0.5) * $mq
+                    }
+                }
+            }
+            if (-not $moved) { break }
+        }
+        # A box squeezed between two others can oscillate forever: walk what still
+        # overlaps outwards from the origin (the hub) until it finds free ground.
+        for ($i = $nf; $i -lt $n; $i++) {
+            for ($step = 0; $step -lt 80; $step++) {
+                $hit = $false
+                for ($j = 0; $j -lt $n; $j++) {
+                    if ($j -eq $i) { continue }
+                    if ([Math]::Abs($x[$i] - $x[$j]) -lt ($w[$i] + $w[$j]) / 2 + $Margin -and
+                        [Math]::Abs($y[$i] - $y[$j]) -lt ($h[$i] + $h[$j]) / 2 + $Margin) { $hit = $true; break }
+                }
+                if (-not $hit) { break }
+                $vx = $x[$i] - $OriginX; $vy = $y[$i] - $OriginY
+                $len = [Math]::Sqrt($vx * $vx + $vy * $vy)
+                if ($len -lt 1) { $vx = 1; $vy = 0; $len = 1 }
+                $x[$i] += 20 * $vx / $len; $y[$i] += 20 * $vy / $len
+            }
+        }
+        for ($i = $nf; $i -lt $n; $i++) { $all[$i].X = $x[$i]; $all[$i].Y = $y[$i] }
+    }
+    # Family of an assignee type (365Boost: an Exchange role group is a role, one
+    # colour for both, the label says which; a computer is a device).
+    function Get-VizAssigneeFamily {
         param([string]$Type)
         switch ($Type) {
-            'ServicePrincipal' { return @{ Bg='#F0FDF4'; Border='#15803D'; Fg='#14532D' } }
-            'RoleGroup'        { return @{ Bg='#F5F3FF'; Border='#7C3AED'; Fg='#4C1D95' } }
-            'SecurityGroup'    { return @{ Bg='#F5F3FF'; Border='#7C3AED'; Fg='#4C1D95' } }
-            'User'             { return @{ Bg='#EDF5FF'; Border='#004EB3'; Fg='#003373' } }
-            default            { return @{ Bg='#F4F4F5'; Border='#71717A'; Fg='#27272A' } }
+            'ServicePrincipal'     { return 'app' }
+            'RoleGroup'            { return 'role' }
+            'RoleAssignmentPolicy' { return 'role' }
+            'SecurityGroup'        { return 'group' }
+            'User'                 { return 'user' }
+            'Computer'             { return 'device' }
+            default                { return 'other' }
         }
+    }
+    # The "Who" node keeps ONE colour whatever the assignee type (the type is
+    # written on the node), so the diagram does not change hue from one
+    # assignment to the next. Green (365Boost's app hue); the Read cmdlets are
+    # teal so the two never share a colour. Per-type hues stay available through
+    # Get-VizAssigneeFamily if this is ever wanted back.
+    function Get-VizAssigneePalette {
+        param([string]$Type)
+        return (New-VizPalette -Family 'app')
+    }
+    # Family of a scope member from its RecipientTypeDetails (a bubble passes its
+    # type name): groups first (a GroupMailbox is a group), then mailboxes and mail
+    # users, everything else (contacts, public folders...) is "other".
+    function Get-VizRecipientFamily {
+        param([string]$Type)
+        if ($Type -match 'Group') { return 'group' }
+        if ($Type -match 'Mailbox|MailUser') { return 'user' }
+        return 'other'
+    }
+    function Get-VizRecipientPalette {
+        param([string]$Type)
+        return (New-VizPalette -Family (Get-VizRecipientFamily -Type $Type))
     }
 
     # Module versions (sidebar = this module, status bar = ExchangeOnlineManagement)
@@ -2171,12 +2356,13 @@ $($script:DlgResourcesXaml)
         'Implicit' = @{ Bg='#ECEFF1'; Fg='#37474F' }
     }
     $BadgeAssigneeType = @{
-        'User'                 = @{ Bg='#E3F2FD'; Fg='#0D47A1' }
-        'RoleGroup'            = @{ Bg='#FFF3E0'; Fg='#E65100' }
-        'SecurityGroup'        = @{ Bg='#F3E5F5'; Fg='#6A1B9A' }
-        'RoleAssignmentPolicy' = @{ Bg='#E0F7FA'; Fg='#006064' }
-        'Computer'             = @{ Bg='#ECEFF1'; Fg='#37474F' }
-        'ServicePrincipal'     = @{ Bg='#FFF8E1'; Fg='#8D6E00' }
+        # 365Boost object type accents (text-safe --365b-cat-* on a 0.9 tint), same families as the Visualizer.
+        'User'                 = @{ Bg=(Get-VizTint -Hex $script:VizCat.user   -T 0.9); Fg=$script:VizCat.user }
+        'RoleGroup'            = @{ Bg=(Get-VizTint -Hex $script:VizCat.role   -T 0.9); Fg=$script:VizCat.role }
+        'SecurityGroup'        = @{ Bg=(Get-VizTint -Hex $script:VizCat.group  -T 0.9); Fg=$script:VizCat.group }
+        'RoleAssignmentPolicy' = @{ Bg=(Get-VizTint -Hex $script:VizCat.role   -T 0.9); Fg=$script:VizCat.role }
+        'Computer'             = @{ Bg=(Get-VizTint -Hex $script:VizCat.device -T 0.9); Fg=$script:VizCat.device }
+        'ServicePrincipal'     = @{ Bg=(Get-VizTint -Hex $script:VizCat.app    -T 0.9); Fg=$script:VizCat.app }
     }
     # The Exchange admin center (#/adminRoles) only lists role groups, so an
     # assignment to any other assignee type is invisible there.
@@ -2904,32 +3090,47 @@ $($script:DlgResourcesXaml)
         $roleNcX = $roleS.X + $nodeW / 2
         $roleNcY = $roleS.Y + $nodeH / 2
 
-        # Base angle from hub to role node
-        $vx = $roleNcX - $cx; $vy = $roleNcY - $cy
-        $vlen = [Math]::Sqrt($vx * $vx + $vy * $vy)
-        if ($vlen -gt 0) { $vx /= $vlen; $vy /= $vlen }
-        $baseAngle = [Math]::Atan2($vy, $vx)
-
         # -- Cmdlet positioning: circular layout with multiple rings -------
         # Compact form to stay readable when a role grants many cmdlets.
         $cmdletNodeW    = 140
         $cmdletNodeH    = 22
-        $baseRadius     = 130
-        $ringSpacing    = 70
-        $itemsPerRing   = 14
         $cmdletPositions = [System.Collections.Generic.List[hashtable]]::new()
         $bounds = @{ minX = $roleNcX; maxX = $roleNcX; minY = $roleNcY; maxY = $roleNcY }
 
-        for ($i = 0; $i -lt $allEntries.Count; $i++) {
-            $ring     = [int]($i / $itemsPerRing)
-            $posInRing = $i % $itemsPerRing
-            $radius   = $baseRadius + $ring * $ringSpacing
-            $angle    = $baseAngle + 2 * [Math]::PI * $posInRing / $itemsPerRing
+        # Cmdlets (around the Role) and members (around the Scope) follow the
+        # layout picked in the toolbar, then one pass clears whatever still
+        # overlaps (the hub and the three spokes stay where they are).
+        $memberNodeW = 150
+        $memberNodeH = 22
+        # Filter out nulls: @($null) yields a 1-element array holding $null, which
+        # would otherwise draw a single empty "phantom" member node before the user
+        # has resolved any members.
+        $members  = @($script:VizScopeMembers | Where-Object { $null -ne $_ })
+        $scopeS   = $spokes[2]
+        $scopeNcX = $scopeS.X + $nodeW / 2
+        $scopeNcY = $scopeS.Y + $nodeH / 2
+        $layoutMode = if ($script:VizLayout) { $script:VizLayout } else { 'Blocks' }
+        $cmdletCentres = Get-VizFanCentres -Mode $layoutMode -Count $allEntries.Count `
+            -NodeX $roleNcX -NodeY $roleNcY -NodeW $nodeW -NodeH $nodeH `
+            -ItemW $cmdletNodeW -ItemH $cmdletNodeH -FromX $cx -FromY $cy -BlockDirection Left
+        # The Scope node grows with its text (name, read scope, member count).
+        $memberCentres = Get-VizFanCentres -Mode $layoutMode -Count $members.Count `
+            -NodeX $scopeNcX -NodeY $scopeNcY -NodeW $nodeW -NodeH ($nodeH + 50) `
+            -ItemW $memberNodeW -ItemH $memberNodeH -FromX $cx -FromY $cy -BlockDirection Down
+        $fixedBoxes = @(
+            @{ X = $cx;                  Y = $cy;                  W = $hubR * 2; H = $hubR * 2 }
+            @{ X = $roleNcX;             Y = $roleNcY;             W = $nodeW;    H = $nodeH }
+            @{ X = $spokes[1].X + 100;   Y = $spokes[1].Y + 30;    W = $nodeW;    H = $nodeH }
+            @{ X = $scopeNcX;            Y = $scopeS.Y + 50;       W = $nodeW;    H = 100 }
+        )
+        Move-VizOverlaps -Fixed $fixedBoxes -Moving (@($cmdletCentres) + @($memberCentres)) -OriginX $cx -OriginY $cy
 
-            $ncX = $roleNcX + $radius * [Math]::Cos($angle)
-            $ncY = $roleNcY + $radius * [Math]::Sin($angle)
+        for ($i = 0; $i -lt $allEntries.Count; $i++) {
+            $ncX = $cmdletCentres[$i].X
+            $ncY = $cmdletCentres[$i].Y
             $x   = $ncX - $cmdletNodeW / 2
             $y   = $ncY - $cmdletNodeH / 2
+            $angle = [Math]::Atan2($ncY - $roleNcY, $ncX - $roleNcX)
 
             $null = $cmdletPositions.Add(@{
                 X     = $x
@@ -2937,7 +3138,7 @@ $($script:DlgResourcesXaml)
                 NcX   = $ncX
                 NcY   = $ncY
                 Angle = $angle
-                Ring  = $ring
+                Ring  = 0
             })
 
             # Track bounds
@@ -2958,36 +3159,15 @@ $($script:DlgResourcesXaml)
         # -- Scope member positioning (only when the user resolved them) ----
         # Members fan out around the Scope spoke the same way cmdlets fan around
         # the Role node: rings of nodes pointing away from the hub.
-        $scopeS   = $spokes[2]
-        $scopeNcX = $scopeS.X + $nodeW / 2
-        $scopeNcY = $scopeS.Y + $nodeH / 2
-        $svx = $scopeNcX - $cx; $svy = $scopeNcY - $cy
-        $svlen = [Math]::Sqrt($svx * $svx + $svy * $svy)
-        if ($svlen -gt 0) { $svx /= $svlen; $svy /= $svlen }
-        $scopeBaseAngle = [Math]::Atan2($svy, $svx)
-
-        $memberNodeW    = 150
-        $memberNodeH    = 22
-        $memBaseRadius  = 130
-        $memRingSpacing = 60
-        $memItemsPerRing = 12
         $memberPositions = [System.Collections.Generic.List[hashtable]]::new()
-        # Filter out nulls: @($null) yields a 1-element array holding $null, which
-        # would otherwise draw a single empty "phantom" member node before the user
-        # has resolved any members.
-        $members = @($script:VizScopeMembers | Where-Object { $null -ne $_ })
         for ($i = 0; $i -lt $members.Count; $i++) {
-            $ring      = [int]($i / $memItemsPerRing)
-            $posInRing = $i % $memItemsPerRing
-            $radius    = $memBaseRadius + $ring * $memRingSpacing
-            $angle     = $scopeBaseAngle + 2 * [Math]::PI * $posInRing / $memItemsPerRing
-
-            $ncX = $scopeNcX + $radius * [Math]::Cos($angle)
-            $ncY = $scopeNcY + $radius * [Math]::Sin($angle)
+            $ncX = $memberCentres[$i].X
+            $ncY = $memberCentres[$i].Y
             $x   = $ncX - $memberNodeW / 2
             $y   = $ncY - $memberNodeH / 2
+            $angle = [Math]::Atan2($ncY - $scopeNcY, $ncX - $scopeNcX)
 
-            $null = $memberPositions.Add(@{ X = $x; Y = $y; NcX = $ncX; NcY = $ncY; Angle = $angle; Ring = $ring })
+            $null = $memberPositions.Add(@{ X = $x; Y = $y; NcX = $ncX; NcY = $ncY; Angle = $angle; Ring = 0 })
 
             $bounds.minX = [Math]::Min($bounds.minX, $x)
             $bounds.maxX = [Math]::Max($bounds.maxX, $x + $memberNodeW + 24)
@@ -3212,7 +3392,7 @@ $($script:DlgResourcesXaml)
         $sp = [System.Windows.Controls.StackPanel]::new()
         $sp.HorizontalAlignment = 'Center'; $sp.VerticalAlignment = 'Center'
         $tb1 = [System.Windows.Controls.TextBlock]::new()
-        $tb1.Text = 'ASSIGNMENT'; $tb1.FontFamily = 'Consolas'; $tb1.FontSize = 9; $tb1.Foreground = '#BFD9F5'
+        $tb1.Text = 'ASSIGNMENT'; $tb1.FontFamily = 'Consolas'; $tb1.FontSize = 9; $tb1.Foreground = '#A1A1AA'
         $tb1.HorizontalAlignment = 'Center'
         $tb2 = [System.Windows.Controls.TextBlock]::new()
         $tb2.Text = $a.Name; $tb2.FontWeight = 'SemiBold'; $tb2.FontSize = 11; $tb2.Foreground = $script:VizHubPalette.Fg
@@ -3281,7 +3461,7 @@ $($script:DlgResourcesXaml)
             $lbl.Foreground = '#62626B'
             $name = [System.Windows.Controls.TextBlock]::new()
             $name.Text = $s.Name; $name.FontSize = 13; $name.FontWeight = 'SemiBold'
-            $name.Foreground = '#18181B'
+            $name.Foreground = $script:VizNodeText
             $name.TextWrapping = 'Wrap'
             $null = $st.Children.Add($lbl)
             $null = $st.Children.Add($name)
@@ -3418,11 +3598,12 @@ $($script:DlgResourcesXaml)
         }
 
         # -- Scope member nodes --------------------------------------------
-        $memPal = $script:VizMemberPalette
         for ($i = 0; $i -lt $members.Count; $i++) {
             $pos  = $memberPositions[$i]
             $m    = $members[$i]
             $isBubble = [bool]$m.IsBubble
+            # One hue per recipient family (mailbox = user, group = group, else other).
+            $memPal = Get-VizRecipientPalette -Type $(if ($isBubble) { "$($m.BubbleType)" } else { "$($m.RecipientTypeDetails)" })
             $node = [System.Windows.Controls.Border]::new()
             $node.Width        = $memberNodeW
             $node.CornerRadius = if ($isBubble) { '11' } else { '6' }
@@ -3506,17 +3687,26 @@ $($script:DlgResourcesXaml)
                 $lbl.VerticalAlignment = 'Center'
                 $null = $legendPanel.Children.Add($lbl)
             }
-            # Append a scope-members swatch when members are drawn on the canvas.
+            # Append one swatch per recipient family present among the drawn members.
             if ($members.Count -gt 0) {
-                $sw = [System.Windows.Shapes.Rectangle]::new()
-                $sw.Width = 12; $sw.Height = 12
-                $sw.Fill = $memPal.Bg; $sw.Stroke = $memPal.Border; $sw.StrokeThickness = 1
-                $sw.Margin = '12,0,4,0'; $sw.VerticalAlignment = 'Center'
-                $null = $legendPanel.Children.Add($sw)
-                $lbl = [System.Windows.Controls.TextBlock]::new()
-                $lbl.Text = "Scope members ($($members.Count)$(if ($script:VizScopeTruncated) { '+' } else { '' }))"
-                $lbl.FontSize = 11; $lbl.Foreground = '#201F1E'; $lbl.VerticalAlignment = 'Center'
-                $null = $legendPanel.Children.Add($lbl)
+                $famLabels = [ordered]@{ user = 'Mailboxes'; group = 'Groups'; other = 'Other recipients' }
+                $present = @($members | ForEach-Object { Get-VizRecipientFamily -Type $(if ($_.IsBubble) { "$($_.BubbleType)" } else { "$($_.RecipientTypeDetails)" }) } | Select-Object -Unique)
+                $first = $true
+                foreach ($fam in $famLabels.Keys) {
+                    if ($fam -notin $present) { continue }
+                    $fp = New-VizPalette -Family $fam
+                    $sw = [System.Windows.Shapes.Rectangle]::new()
+                    $sw.Width = 12; $sw.Height = 12
+                    $sw.Fill = $fp.Bg; $sw.Stroke = $fp.Border; $sw.StrokeThickness = 1
+                    $sw.Margin = $(if ($first) { '12,0,4,0' } else { '6,0,4,0' }); $sw.VerticalAlignment = 'Center'
+                    $null = $legendPanel.Children.Add($sw)
+                    $lbl = [System.Windows.Controls.TextBlock]::new()
+                    $lbl.Text = $famLabels[$fam]
+                    if ($first) { $lbl.Text += " (scope members $($members.Count)$(if ($script:VizScopeTruncated) { '+' } else { '' }))" }
+                    $lbl.FontSize = 11; $lbl.Foreground = '#201F1E'; $lbl.VerticalAlignment = 'Center'
+                    $null = $legendPanel.Children.Add($lbl)
+                    $first = $false
+                }
             }
             $legend.Child = $legendPanel
             [System.Windows.Controls.Canvas]::SetLeft($legend, 12)
@@ -3639,17 +3829,18 @@ $($script:DlgResourcesXaml)
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY
             $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
-            $line.Stroke = '#605E5C'; $line.StrokeThickness = 1.2
+            $line.Stroke = $script:VizEdgeColor; $line.StrokeThickness = 1.2
             $null = $cv.Children.Add($line); $null = $lines.Add($line)
         }
 
         # hub (account)
         $hub = [System.Windows.Controls.Border]::new()
         $hub.Width = $hubR * 2; $hub.Height = $hubR * 2; $hub.CornerRadius = "$hubR"
-        $hub.Background = '#FFF4CE'; $hub.BorderBrush = '#B28704'; $hub.BorderThickness = 2
+        # The centre is the account, i.e. the "Who": solid green like the Who node, white text.
+        $hub.Background = $script:VizFam.app; $hub.BorderBrush = $script:VizFam.app; $hub.BorderThickness = 1.5
         $sp = [System.Windows.Controls.StackPanel]::new(); $sp.HorizontalAlignment = 'Center'; $sp.VerticalAlignment = 'Center'
-        $t1 = [System.Windows.Controls.TextBlock]::new(); $t1.Text = 'ACCOUNT'; $t1.FontFamily = 'Consolas'; $t1.FontSize = 9; $t1.Foreground = '#605E5C'; $t1.HorizontalAlignment = 'Center'
-        $t2 = [System.Windows.Controls.TextBlock]::new(); $t2.Text = $u.Name; $t2.FontWeight = 'SemiBold'; $t2.FontSize = 11; $t2.HorizontalAlignment = 'Center'; $t2.TextWrapping = 'Wrap'; $t2.TextAlignment = 'Center'; $t2.MaxWidth = $hubR * 2 - 16
+        $t1 = [System.Windows.Controls.TextBlock]::new(); $t1.Text = 'ACCOUNT'; $t1.FontFamily = 'Consolas'; $t1.FontSize = 9; $t1.Foreground = '#CCE6CC'; $t1.HorizontalAlignment = 'Center'
+        $t2 = [System.Windows.Controls.TextBlock]::new(); $t2.Text = $u.Name; $t2.FontWeight = 'SemiBold'; $t2.FontSize = 11; $t2.Foreground = '#FFFFFF'; $t2.HorizontalAlignment = 'Center'; $t2.TextWrapping = 'Wrap'; $t2.TextAlignment = 'Center'; $t2.MaxWidth = $hubR * 2 - 16
         $null = $sp.Children.Add($t1); $null = $sp.Children.Add($t2); $hub.Child = $sp
         [System.Windows.Controls.Canvas]::SetLeft($hub, $cx - $hubR + $offsetX)
         [System.Windows.Controls.Canvas]::SetTop($hub,  $cy - $hubR + $offsetY)
@@ -3668,8 +3859,8 @@ $($script:DlgResourcesXaml)
         for ($i = 0; $i -lt $count; $i++) {
             $pos = $positions[$i]; $r = $roles[$i]
             $node = [System.Windows.Controls.Border]::new()
-            $node.Width = $nodeW; $node.CornerRadius = '4'; $node.Background = '#DFF6DD'
-            $node.BorderBrush = '#558B2F'; $node.BorderThickness = 1; $node.Padding = '10,6'
+            $node.Width = $nodeW; $node.CornerRadius = '8'; $node.Background = $script:VizRolePalette.Bg
+            $node.BorderBrush = $script:VizRolePalette.Border; $node.BorderThickness = 1.5; $node.Padding = '10,6'
             $st = [System.Windows.Controls.StackPanel]::new()
             $lbl = [System.Windows.Controls.TextBlock]::new(); $lbl.Text = "$($r.Via)"; $lbl.FontFamily = 'Consolas'; $lbl.FontSize = 9; $lbl.Foreground = '#605E5C'; $lbl.TextTrimming = 'CharacterEllipsis'
             $nm  = [System.Windows.Controls.TextBlock]::new(); $nm.Text = "$($r.Role)"; $nm.FontSize = 13; $nm.FontWeight = 'SemiBold'; $nm.TextWrapping = 'Wrap'
@@ -3760,9 +3951,9 @@ $($script:DlgResourcesXaml)
             $pos = $cmdletPositions[$i]
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY; $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
-            $line.Stroke = '#558B2F'; $line.StrokeThickness = 1.2; $line.StrokeDashArray = $dashes
+            $line.Stroke = $script:VizEdgeColor; $line.StrokeThickness = 1.0; $line.StrokeDashArray = $dashes
             $null = $cv.Children.Add($line)
-            $arrow = Add-VizArrow -Canvas $cv -TipX ($pos.NcX + $offsetX) -TipY ($pos.NcY + $offsetY) -Angle $pos.Angle -Color '#558B2F'
+            $arrow = Add-VizArrow -Canvas $cv -TipX ($pos.NcX + $offsetX) -TipY ($pos.NcY + $offsetY) -Angle $pos.Angle -Color $script:VizEdgeColor
             $null = $cmdletLines.Add($line); $null = $cmdletArrows.Add($arrow)
         }
         # assignee edges
@@ -3772,20 +3963,20 @@ $($script:DlgResourcesXaml)
             $pos = $asgPositions[$i]
             $line = [System.Windows.Shapes.Line]::new()
             $line.X1 = $cx + $offsetX; $line.Y1 = $cy + $offsetY; $line.X2 = $pos.NcX + $offsetX; $line.Y2 = $pos.NcY + $offsetY
-            $line.Stroke = '#B28704'; $line.StrokeThickness = 1.0; $line.StrokeDashArray = $dashes
+            $line.Stroke = $script:VizEdgeColor; $line.StrokeThickness = 1.0; $line.StrokeDashArray = $dashes
             $null = $cv.Children.Add($line)
             $ang = [Math]::Atan2($pos.NcY - $cy, $pos.NcX - $cx)
-            $arrow = Add-VizArrow -Canvas $cv -TipX ($pos.NcX + $offsetX) -TipY ($pos.NcY + $offsetY) -Angle $ang -Color '#B28704'
+            $arrow = Add-VizArrow -Canvas $cv -TipX ($pos.NcX + $offsetX) -TipY ($pos.NcY + $offsetY) -Angle $ang -Color $script:VizEdgeColor
             $null = $asgLines.Add($line); $null = $asgArrows.Add($arrow)
         }
 
         # hub (role)
         $hub = [System.Windows.Controls.Border]::new()
         $hub.Width = $hubR * 2; $hub.Height = $hubR * 2; $hub.CornerRadius = "$hubR"
-        $hub.Background = '#DFF6DD'; $hub.BorderBrush = '#558B2F'; $hub.BorderThickness = 2
+        $hub.Background = $script:VizFam.role; $hub.BorderBrush = $script:VizFam.role; $hub.BorderThickness = 1.5
         $sp = [System.Windows.Controls.StackPanel]::new(); $sp.HorizontalAlignment = 'Center'; $sp.VerticalAlignment = 'Center'
-        $t1 = [System.Windows.Controls.TextBlock]::new(); $t1.Text = 'ROLE'; $t1.FontFamily = 'Consolas'; $t1.FontSize = 9; $t1.Foreground = '#605E5C'; $t1.HorizontalAlignment = 'Center'
-        $t2 = [System.Windows.Controls.TextBlock]::new(); $t2.Text = $roleName; $t2.FontWeight = 'SemiBold'; $t2.FontSize = 11; $t2.HorizontalAlignment = 'Center'; $t2.TextWrapping = 'Wrap'; $t2.TextAlignment = 'Center'; $t2.MaxWidth = $hubR * 2 - 16
+        $t1 = [System.Windows.Controls.TextBlock]::new(); $t1.Text = 'ROLE'; $t1.FontFamily = 'Consolas'; $t1.FontSize = 9; $t1.Foreground = '#FADEDE'; $t1.HorizontalAlignment = 'Center'
+        $t2 = [System.Windows.Controls.TextBlock]::new(); $t2.Text = $roleName; $t2.FontWeight = 'SemiBold'; $t2.FontSize = 11; $t2.Foreground = '#FFFFFF'; $t2.HorizontalAlignment = 'Center'; $t2.TextWrapping = 'Wrap'; $t2.TextAlignment = 'Center'; $t2.MaxWidth = $hubR * 2 - 16
         $null = $sp.Children.Add($t1); $null = $sp.Children.Add($t2); $hub.Child = $sp
         [System.Windows.Controls.Canvas]::SetLeft($hub, $cx - $hubR + $offsetX)
         [System.Windows.Controls.Canvas]::SetTop($hub,  $cy - $hubR + $offsetY)
@@ -3808,7 +3999,7 @@ $($script:DlgResourcesXaml)
         for ($i = 0; $i -lt $entries.Count; $i++) {
             $pos = $cmdletPositions[$i]; $entry = $entries[$i]; $pal = $verbPalettes[$entry.CmdletGroup]
             $node = [System.Windows.Controls.Border]::new()
-            $node.Width = $cmdletNodeW; $node.CornerRadius = '3'; $node.Background = $pal.Bg; $node.BorderBrush = $pal.Border; $node.BorderThickness = 1; $node.Padding = '5,2'
+            $node.Width = $cmdletNodeW; $node.CornerRadius = '6'; $node.Background = $pal.Bg; $node.BorderBrush = $pal.Border; $node.BorderThickness = 1.2; $node.Padding = '6,2'
             $tb = [System.Windows.Controls.TextBlock]::new(); $tb.Text = "$($entry.CmdletShortName)"; $tb.FontSize = 9; $tb.FontWeight = 'SemiBold'; $tb.TextTrimming = 'CharacterEllipsis'; $tb.Foreground = $pal.Fg
             $tb.ToolTip = "$($entry.Name) [$($entry.CmdletGroup) - $($entry.CmdletVerb)]"; $node.Child = $tb
             [System.Windows.Controls.Canvas]::SetLeft($node, $pos.X + $offsetX); [System.Windows.Controls.Canvas]::SetTop($node, $pos.Y + $offsetY)
@@ -3831,7 +4022,8 @@ $($script:DlgResourcesXaml)
         for ($i = 0; $i -lt $asgCount; $i++) {
             $pos = $asgPositions[$i]; $asg = $usedBy[$i]
             $node = [System.Windows.Controls.Border]::new()
-            $node.Width = $asgNodeW; $node.CornerRadius = '4'; $node.Background = '#FFF4CE'; $node.BorderBrush = '#B28704'; $node.BorderThickness = 1; $node.Padding = '8,5'
+            $asgPal = Get-VizAssigneePalette -Type "$($asg.RoleAssigneeType)"
+            $node.Width = $asgNodeW; $node.CornerRadius = '8'; $node.Background = $asgPal.Bg; $node.BorderBrush = $asgPal.Border; $node.BorderThickness = 1.5; $node.Padding = '8,5'
             $st = [System.Windows.Controls.StackPanel]::new()
             $lbl = [System.Windows.Controls.TextBlock]::new(); $lbl.Text = "Used by · $($asg.RoleAssigneeType)"; $lbl.FontFamily = 'Consolas'; $lbl.FontSize = 9; $lbl.Foreground = '#605E5C'; $lbl.TextTrimming = 'CharacterEllipsis'
             $nm = [System.Windows.Controls.TextBlock]::new(); $nm.Text = "$($asg.RoleAssignee)"; $nm.FontSize = 12; $nm.FontWeight = 'SemiBold'; $nm.TextWrapping = 'Wrap'
@@ -4452,6 +4644,8 @@ $($script:DlgResourcesXaml)
                 $null = $list.Add((New-ActionButton -Label '➖ Zoom out' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Zoom-Viz (1 / 1.2) }))
                 $null = $list.Add((New-ActionButton -Label '⌖ Center'   -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Reset-VizTransform; Render-Visualizer }))
                 $null = $list.Add((New-ActionButton -Label '👥 Scope members' -Style 'ActionBtn' -Kind 'Tool' -OnClick { Toggle-VizScope }))
+                # One click moves to the next layout; the label shows the current one.
+                $null = $list.Add((New-ActionButton -Label "▦ Layout: $($script:VizLayout)" -Style 'ActionBtn' -Kind 'Tool' -OnClick { Switch-VizLayout }))
                 $null = $list.Add((New-ActionButton -Label 'Export PNG'  -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizPng }))
                 $null = $list.Add((New-ActionButton -Label 'Export HTML' -Style 'ActionBtn'  -Kind 'Tool' -OnClick { Export-VizHtml }))
             }
@@ -5544,6 +5738,16 @@ $($script:DlgResourcesXaml)
         Render-Visualizer
     }
 
+    # Next fan layout (Blocks -> Fan -> Rings), then redraw. Rebuilding the
+    # toolbar refreshes the button label.
+    function Switch-VizLayout {
+        $modes = @('Blocks', 'Fan', 'Rings')
+        $script:VizLayout = $modes[([array]::IndexOf($modes, $script:VizLayout) + 1) % $modes.Count]
+        Set-Actions -Buttons (Get-ActionsForView -View 'Visualizer')
+        Set-Status "Visualizer layout: $($script:VizLayout)." 'info'
+        Render-Visualizer
+    }
+
     # The "+" of a bubble: opens or closes one recipient type.
     function Toggle-VizType {
         param([string]$Type)
@@ -6027,13 +6231,18 @@ $($script:DlgResourcesXaml)
             $null = $edges.Add([ordered]@{ source='role'; target=$id; kind='cmdlet'; group=$e.CmdletGroup })
         }
 
-        $memPal  = $script:VizMemberPalette
         # Filter out nulls (@($null) is a 1-element array) so the export never
         # carries a phantom empty member node.
         $members = @($script:VizScopeMembers | Where-Object { $null -ne $_ })
+        $famCounts = [ordered]@{ user = 0; group = 0; other = 0 }
         for ($i = 0; $i -lt $members.Count; $i++) {
             $m  = $members[$i]
             $id = "mem$i"
+            # Same recipient families as the WPF view (mailbox = user, group = group, else other).
+            $recType = if ($m.IsBubble) { "$($m.BubbleType)" } else { "$($m.RecipientTypeDetails)" }
+            $fam     = Get-VizRecipientFamily -Type $recType
+            $famCounts[$fam]++
+            $memPal  = New-VizPalette -Family $fam
             $null = $nodes.Add([ordered]@{ id=$id; type='member'; group='Member'; label="$($m.Name)"; sub="$($m.RecipientTypeDetails)";
                 bg=$memPal.Bg; border=$memPal.Border; fg=$memPal.Fg; tooltip="$($m.Name)`n$($m.PrimarySmtpAddress)`n$($m.RecipientTypeDetails)" })
             $null = $edges.Add([ordered]@{ source='scope'; target=$id; kind='member' })
@@ -6050,9 +6259,11 @@ $($script:DlgResourcesXaml)
             $p = $script:VizVerbPalettes[$g]
             $null = $legend.Add([ordered]@{ key=$g; label="$g ($($groupCounts[$g]))"; color=$p.Bg; border=$p.Border })
         }
-        if ($members.Count -gt 0) {
-            $suffix = if ($script:VizScopeTruncated) { '+' } else { '' }
-            $null = $legend.Add([ordered]@{ key='Member'; label="Scope members ($($members.Count)$suffix)"; color=$memPal.Bg; border=$memPal.Border })
+        $famLabels = @{ user = 'Mailboxes'; group = 'Groups'; other = 'Other recipients' }
+        foreach ($fam in $famCounts.Keys) {
+            if ($famCounts[$fam] -eq 0) { continue }
+            $fp = New-VizPalette -Family $fam
+            $null = $legend.Add([ordered]@{ key="Member-$fam"; label="$($famLabels[$fam]) ($($famCounts[$fam]))"; color=$fp.Bg; border=$fp.Border })
         }
 
         return [ordered]@{
@@ -6212,6 +6423,39 @@ var GRAPH = __GRAPH_JSON__;
     });
     fan(GRAPH.nodes.filter(function(n){return n.type==='cmdlet';}), byId['role'],  cx, cy, 156, 26, 215, 84, 12);
     fan(GRAPH.nodes.filter(function(n){return n.type==='member';}), byId['scope'], cx, cy, 168, 26, 185, 70, 11);
+    removeOverlaps(GRAPH.nodes.filter(function(n){return n.type==='cmdlet'||n.type==='member';}),
+                   ['hub','role','assignee','scope'].map(function(k){return byId[k];}).filter(Boolean), 14);
+  }
+  // Same safety net as the WPF view: push the fan boxes apart and off the fixed
+  // nodes (hub + spokes) until none overlaps; the origin is the hub.
+  function removeOverlaps(movers, fixed, margin){
+    var all=fixed.concat(movers), nf=fixed.length;
+    function hit(a,b){ return Math.abs(a.x-b.x) < (a.w+b.w)/2+margin && Math.abs(a.y-b.y) < (a.h+b.h)/2+margin; }
+    for(var it=0; it<40; it++){
+      var moved=false;
+      for(var p=0;p<all.length;p++){
+        for(var q=p+1;q<all.length;q++){
+          if(q<nf) continue;
+          var A=all[p], B=all[q], dx=B.x-A.x, dy=B.y-A.y;
+          var ox=(A.w+B.w)/2+margin-Math.abs(dx), oy=(A.h+B.h)/2+margin-Math.abs(dy);
+          if(ox<=0||oy<=0) continue;
+          moved=true;
+          var mp = p<nf ? 0 : 0.5, mq = 1-mp;
+          if(ox<oy){ var sx = dx>0 ? 1 : (dx<0 ? -1 : ((p+q)%2 ? 1 : -1)); A.x-=sx*(ox+0.5)*mp; B.x+=sx*(ox+0.5)*mq; }
+          else { var sy = dy>=0 ? 1 : -1; A.y-=sy*(oy+0.5)*mp; B.y+=sy*(oy+0.5)*mq; }
+        }
+      }
+      if(!moved) break;
+    }
+    for(var i=nf;i<all.length;i++){
+      for(var s=0;s<80;s++){
+        var blocked=false;
+        for(var j=0;j<all.length;j++){ if(j!==i && hit(all[i],all[j])){ blocked=true; break; } }
+        if(!blocked) break;
+        var len=Math.hypot(all[i].x, all[i].y)||1;
+        all[i].x+=20*all[i].x/len; all[i].y+=20*all[i].y/len;
+      }
+    }
   }
   function fan(items, center, cx, cy, w, h, baseR, ringSpacing, perRing){
     if(!center) return;
@@ -6266,7 +6510,7 @@ var GRAPH = __GRAPH_JSON__;
     var fg=n.fg||'#201F1E';
     var lines=[];
     if(n.type==='hub'){
-      lines.push({t:'ASSIGNMENT', s:9, c:'#BFD9F5', dy:-6, mono:true});
+      lines.push({t:'ASSIGNMENT', s:9, c:'#A1A1AA', dy:-6, mono:true});
       lines.push({t:truncate(n.label,18), s:12, c:fg, dy:12, bold:true});
     } else if(n.type==='role'||n.type==='assignee'||n.type==='scope'){
       lines.push({t:truncate(n.sub||'', 30), s:9, c:'#62626B', dy:-15, mono:true});

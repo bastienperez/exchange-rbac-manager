@@ -13,6 +13,7 @@ Role group copies preserve a shared custom recipient write scope and include it 
 Features
 --------
 
+*   **Sees what the Exchange admin center does not** - the admin center (*Roles > Admin roles*) only lists **role groups** and their members. A role assigned directly to a service principal, a user or a policy is active but invisible there. Exchange RBAC Manager reads every management role assignment, so it shows both, and flags the ones the admin center cannot show.
 *   **RBAC Visualizer** - hub-and-spoke diagram (Role / Assignee / Scope) for any role assignment, with cmdlets coloured and grouped by verb (Read / Modify / Destructive / Create / Other). Reachable from Role Assignments **and** from Roles / Role Groups / Scopes (pick among the related assignments). Resolved scope **names** (not just the `CustomRecipientScope` type), an optional fan of the scope's resolved members, and export to **PNG** or a self-contained **interactive HTML** file
 *   **Ten integrated views** - Role Groups, Roles, Role Assignments, Applications, Scopes, Scope membership preview, User Rights, Command Lookup, My Cmdlets, Audit Log
 *   **My Cmdlets** - lists the cmdlets the connected account can actually run in this session, with each cmdlet's specific parameters; live-filterable by name or parameter
@@ -23,68 +24,6 @@ Features
 *   **Command Lookup** - reverse mapping cmdlet -> roles that grant it
 *   **Activity log** - a collapsible drawer (bottom of the window) mirrors every status message with timestamps, auto-opens on errors, and exports to a `.log` file
 *   **Live filter, contextual actions, CSV/PNG/HTML export** - on every view
-
-What's new in 1.8.0
--------------------
-
-*   **Applications view**: the role assignments held by service principals (RBAC for Applications), with the role, whether it applies to the whole organization or to a scope (and which), the role type (built-in or custom) and the creation date. Chips: All, Whole organization, Scoped, Custom role. It reads nothing more than Role Assignments does.
-*   **Visualizer, a + on the Scope node**: opens the recipients the scope reaches. Up to 5 are drawn directly; beyond that, one bubble per recipient type with its count and its own +, which opens that type (60 at most). Up to 500 recipients are read, counted as 500+ beyond that.
-*   **Fix, My Cmdlets**: the view listed a single cmdlet instead of all the ones the account can run.
-*   **Fixes, Visualizer navigation**: dragging the background no longer jitters (the pointer was measured against the content that moves), zooming no longer makes the diagram jump, dragging a node to the edge no longer redraws the whole diagram and puts the nodes back, and the area outside the canvas is the same grey instead of white.
-
-What's new in 1.7.0
--------------------
-
-*   **Visualizer restyled**: nodes use a soft tint with a full accent border, grey edges and one colour per type (role red, scope amber, service principal green, group violet, user blue, solid blue hub), in the WPF view and in the HTML export.
-*   **Direct assignments flagged**: an assignment to anything other than a role group (service principal, user...) is not listed in the Exchange admin center. The Visualizer panels, the Type badge tooltip in Role Assignments and the HTML export now say so.
-*   **Inspector**: values are selectable and a new *Copy all details* button copies the whole panel.
-*   **Fixes**: the loading overlay no longer stays stuck on "Caching available cmdlets" after connecting, and long error messages no longer grow the status bar until the Activity log drawer is out of reach.
-
-What's new in 1.6.0
--------------------
-
-*   **Visualize a user or a role, not just an assignment**: the Visualizer can now graph three subjects. **Pick user…** takes an account (UPN/alias) and draws everything it can do - a hub for the account ringed by every role it holds (directly or via a role group), with the "via" path and scope on each; click a role to list its cmdlets. **Pick role…** draws a role's cmdlets (coloured by verb group) plus a "Used by" column of the assignments/assignees that grant it. Every node keeps the copy-name and "Open in ..." navigation. The original single-assignment view is unchanged.
-
-What's new in 1.5.0
--------------------
-
-*   **Copy + navigate from a Visualizer node**: the node details panel now has a copy icon that copies the node's name to the clipboard, and an "Open in ..." button that jumps to that element's own section - a role to Roles (with its cmdlets), the assignment to Role Assignments, a custom scope to Scopes, an assignee or scope member to User Rights, a cmdlet to Command Lookup.
-
-What's new in 1.4.0
--------------------
-
-*   **New "My Cmdlets" section**: a dedicated view listing the cmdlets the connected account can run in the current Exchange Online session (resolved from the session's role-scoped module), each with its specific parameters (the 15 PowerShell common parameters are stripped out). The list is local to the session, so it loads instantly and live-filters as you type - by cmdlet name or by parameter. Includes Refresh and Export CSV; click a row to see the full parameter list in the details panel.
-
-What's new in 1.3.0
--------------------
-
-*   **Click a node to inspect it**: every Visualizer node (assignment hub, Role / Assignee / Scope spokes, cmdlets and scope members) is now clickable and opens the slide-out details panel with information tailored to its type - the assignment's role/assignee/scopes/enabled state, the role's cmdlet count and per-group breakdown, a cmdlet's full name and verb group, or a member's type / primary SMTP / OU. Dragging a node still works; a press without a drag is treated as a click.
-
-What's new in 1.2.0
--------------------
-
-*   **Visualize from any RBAC object**: the `Visualize` action is now available on Roles, Role Groups and Scopes - not just Role Assignments. Because one role / role group / scope can back several assignments, it resolves the related assignments and either jumps straight to the graph (single match) or opens a pre-filtered picker (several matches).
-*   **Resolved scope names in the Visualizer**: the *Scope* node shows the custom scope's real name instead of the bare `CustomRecipientScope` type. The name is resolved from the assignment, then by re-querying it by identity, then via a reverse map (`Get-ManagementRoleAssignment -CustomRecipientWriteScope`) so even auto-managed assignments that never surface the name are covered.
-*   **Scope members on the canvas**: a `Scope members` button resolves the write scope's recipients (same engine as *Preview members*) and fans them out around the *Scope* node, with a matching legend entry.
-*   **Interactive HTML export**: export the current Visualizer graph to a single self-contained HTML file (SVG + vanilla JS, no dependencies, works offline) with pan / zoom, node drag, hover highlight, a details panel and a legend.
-*   **Activity log drawer**: a collapsible log at the bottom of the window records every status message (timestamped, severity-tagged), auto-opens on the first error, and can be cleared or exported to a `.log` file. Each session is also mirrored to a file in `%TEMP%`.
-*   **Sortable "Pick assignment" picker**: click a column header to sort the assignment picker (toggle ascending / descending); composes with the search box.
-*   **Delete actions report real failures**: write/delete actions that Exchange rejects (for example deleting a scope still referenced by an assignment) now surface the actual Exchange error instead of a false "deleted" success.
-
-What's new in 1.0.0
--------------------
-
-*   **Edit role assignments**: new compact dialog focused on the write scope. Pick one of four modes - Keep current / Predefined (`RecipientRelativeWriteScope` enum) / Custom recipient scope (loaded dynamically from the tenant's existing scopes) / OU distinguished name / Clear - plus an Enabled toggle. Read scope stays read-only with an explanation that it is inherited from the parent Role and not editable at assignment level in Exchange Online.
-*   **Visualizer grouped by verb**: cmdlets granted by the selected role are now sorted and colour-coded by verb group (Read / Modify / Destructive / Create / Other), with a legend in the corner of the canvas and per-cmdlet tooltips showing the group. Nodes are draggable and the canvas now auto-grows so a node dragged off-screen remains accessible via the scrollbars.
-*   **Scope "Used by" panel**: clicking a scope in the Scopes view lists every assignment that references it in the details panel.
-*   **Built-in vs Custom classification fixed across the board**: Roles now classify built-in vs custom from `IsRootRole` / `IsEndUserRole` / parent-of-others (the My* roles were previously mis-flagged Custom). Scopes carry an `Origin` badge driven by the `Default` property.
-*   **Sturdier Scopes pipeline**: `Get-ManagementScope` multi-valued filters are now rejoined with `-or` instead of being concatenated by spaces (which produced invalid OPATH on preview). The Scopes view also recovers gracefully if EXO returns one bad scope - it logs a warning and keeps the rest.
-*   **Auth UX**: WAM is now off by default (one click on the *i* icon next to the checkbox explains what WAM is). A loading overlay covers the window during browser sign-in. The `SynchronizationContext` is temporarily cleared around the call to work around a deadlock between MSAL.NET and the WPF dispatcher that left the GUI frozen after the browser had returned.
-*   **Lazy data loading**: connecting no longer auto-loads Role Groups. The status bar invites you to pick a section in the sidebar, with an indeterminate progress overlay during each fetch.
-*   **Audit Log section temporarily gated** behind a "coming soon" notice while the implementation is finalised.
-*   **Status bar revamped**: taller, Segoe UI 14 SemiBold, wraps long messages, colour-coded per severity (error in red, warn in amber, ok in default, info in Fluent blue).
-*   **Floating contextual action bar restyled** to a light Fluent pill with a coloured outline, anchored to the data column only (no longer overlaps the details panel when it slides out).
-*   **README revamped**: badges, dedicated "headline feature" section for the Visualizer, expanded section-by-section walkthrough.
 
 Quick Start
 -----------
@@ -149,7 +88,7 @@ You can also reach the Visualizer straight from a **Role**, **Role Group** or **
 
 Typically the section you open first when investigating an unexpected permission, preparing a change request, or documenting a delegation for an audit.
 
-The nine sections
+The ten sections
 -----------------
 
 Each section wraps a specific Exchange RBAC cmdlet (or composition of cmdlets) and exposes the same toolbar pattern: live search, chip filters, *Refresh*, *Export CSV*, plus contextual actions on selected rows.
@@ -180,7 +119,14 @@ Backed by `Get-ManagementRoleAssignment`. The actual binding that ties a *Role* 
 
 This is the workhorse view: most "why does this user have access?" questions are answered here. Selecting an assignment lights up **Visualize** in the floating action bar so you can jump directly to the diagram.
 
-### 4. Scopes
+### 4. Applications
+
+![Applications](docs/screenshots/rbac-applications.png)
+
+The role assignments held by **service principals**, i.e. RBAC for Applications. It reads exactly what Role Assignments reads (Get-ManagementRoleAssignment), filtered to the assignees of type service principal, so it costs nothing extra. For each one the grid shows the role, whether it applies to the **whole organization** or to a **scope** (and which one), whether the role is built-in or custom, and the creation date of the assignment. Chips: *All*, *Whole organization*, *Scoped*, *Custom role*.
+
+Use it to audit what your automation can do in Exchange Online, and to spot an application that holds a role over the whole tenant when a scope would do. Like any assignment made straight to a service principal, these never appear in the Exchange admin center (*Roles > Admin roles* lists role groups only). Selecting a row lights up **Visualize** to draw the role, the application and its scope.
+### 5. Scopes
 
 ![Scopes](docs/screenshots/scopes.png)
 
@@ -188,7 +134,7 @@ Backed by `Get-ManagementScope`. Scopes restrict a role assignment to a subset o
 
 Selecting a scope exposes **Visualize** (graph an assignment that uses it) alongside **Preview members**. A custom scope's filter is a piece of OPATH that is famously easy to write incorrectly. The next section is the antidote.
 
-### 5. Scope membership preview
+### 6. Scope membership preview
 
 ![Scope members preview](docs/screenshots/scope-preview-members.png)
 
@@ -196,7 +142,7 @@ In the *Scopes* section, select a scope and click **Preview members** in the flo
 
 The point is to validate a `RecipientRestrictionFilter` *before* you attach it to a role assignment - so you never end up granting "Mailbox Import Export" against a scope that turns out to match the entire tenant. Results are capped to a safe number of rows and labelled as *truncated* if the scope matches more than the cap.
 
-### 6. User Rights
+### 7. User Rights
 
 ![User Rights](docs/screenshots/user-rights.png)
 
@@ -208,7 +154,7 @@ Type a UPN or alias and press *Enter*. The module:
 
 Useful before/after onboarding, offboarding, or to answer "why does this user have access to X?". Also the right view to confirm a privileged user has no leftover assignments after a role rotation.
 
-### 7. Command Lookup
+### 8. Command Lookup
 
 ![Command Lookup](docs/screenshots/command-lookup.png)
 
@@ -216,13 +162,13 @@ Type a cmdlet name (`Set-Mailbox`, `New-MailboxExportRequest`, ...) and press *E
 
 The reverse of every other section: instead of starting from a role and finding its cmdlets, you start from a cmdlet and find which role(s) would let a user run it. Indispensable when an admin reports "I get an access denied on `Set-MailboxRegionalConfiguration`" and you have to figure out which role is missing. Select one of the returned roles and click **View role** to jump straight to the Roles view for it and see its full cmdlet list.
 
-### 8. My Cmdlets
+### 9. My Cmdlets
 
 When you connect to Exchange Online, EXO builds a session module that exposes only the cmdlets your RBAC roles grant you. This section lists them - one row per cmdlet, with the cmdlet's own parameters (the common parameters like `-Verbose` / `-WhatIf` are stripped so only the meaningful ones show). It answers "what can the account I'm connected as actually run?" without cross-referencing roles by hand.
 
 Because the list is local to the already-loaded session module, it loads instantly and filters live as you type - match on a cmdlet name (`mailbox`) or on a parameter (`-Identity`). Click a row to see the full parameter list in the details panel, and export the whole set to CSV.
 
-### 9. Audit Log
+### 10. Audit Log
 
 Planned for a future release. Clicking the *Audit Log* section currently shows a "coming soon" notice. The implementation will call `Search-AdminAuditLog` over the last 7 / 30 / 90 days (limit imposed by Exchange Online) and surface recent admin changes (caller, cmdlet, target object, parameters).
 
@@ -238,6 +184,79 @@ Links
 *   **PowerShell Gallery**: [ExchangeRBACManager Module](https://www.powershellgallery.com/packages/ExchangeRBACManager)
 *   **Issues & Support**: [GitHub Issues](https://github.com/bastienperez/exchange-rbac-manager/issues)
 *   **Source**: [github.com/bastienperez/exchange-rbac-manager](https://github.com/bastienperez/exchange-rbac-manager)
+
+Changelog
+---------
+
+What's new in 1.9.0
+-------------------
+
+*   **Visualizer, three layouts**: a *Layout* button in the Visualizer toolbar cycles through *Blocks* (rows and columns on the free side of the node), *Fan* (rings on the side facing away from the hub) and *Rings* (full circles). Cmdlets and scope members no longer pile up on the hub or on each other.
+*   **Visualizer, no overlapping boxes**: after any layout, a pass pushes boxes apart and off the hub and the three nodes until none overlaps. The HTML export has the same pass.
+*   **Colours aligned with 365Boost**: one hue per object family. Role and role group red, scope amber, who (the assignee) green, assignment dark. Scope members follow their recipient type (mailbox blue, group violet, other grey). Cmdlet verb groups avoid those hues: Read teal, Modify magenta, Destructive orange, Create blue, Other grey. Same palette in the WPF view, the HTML export and the Type badges of Role Assignments.
+*   **README**: the Applications section, with its screenshot, and the changelog moved to the bottom.
+
+What's new in 1.8.0
+-------------------
+
+*   **Applications view**: the role assignments held by service principals (RBAC for Applications), with the role, whether it applies to the whole organization or to a scope (and which), the role type (built-in or custom) and the creation date. Chips: All, Whole organization, Scoped, Custom role. It reads nothing more than Role Assignments does.
+*   **Visualizer, a + on the Scope node**: opens the recipients the scope reaches. Up to 5 are drawn directly; beyond that, one bubble per recipient type with its count and its own +, which opens that type (60 at most). Up to 500 recipients are read, counted as 500+ beyond that.
+*   **Fix, My Cmdlets**: the view listed a single cmdlet instead of all the ones the account can run.
+*   **Fixes, Visualizer navigation**: dragging the background no longer jitters (the pointer was measured against the content that moves), zooming no longer makes the diagram jump, dragging a node to the edge no longer redraws the whole diagram and puts the nodes back, and the area outside the canvas is the same grey instead of white.
+
+What's new in 1.7.0
+-------------------
+
+*   **Visualizer restyled**: nodes use a soft tint with a full accent border, grey edges and one colour per type (role red, scope amber, service principal green, group violet, user blue, solid blue hub), in the WPF view and in the HTML export.
+*   **Direct assignments flagged**: an assignment to anything other than a role group (service principal, user...) is not listed in the Exchange admin center. The Visualizer panels, the Type badge tooltip in Role Assignments and the HTML export now say so.
+*   **Inspector**: values are selectable and a new *Copy all details* button copies the whole panel.
+*   **Fixes**: the loading overlay no longer stays stuck on "Caching available cmdlets" after connecting, and long error messages no longer grow the status bar until the Activity log drawer is out of reach.
+
+What's new in 1.6.0
+-------------------
+
+*   **Visualize a user or a role, not just an assignment**: the Visualizer can now graph three subjects. **Pick user…** takes an account (UPN/alias) and draws everything it can do - a hub for the account ringed by every role it holds (directly or via a role group), with the "via" path and scope on each; click a role to list its cmdlets. **Pick role…** draws a role's cmdlets (coloured by verb group) plus a "Used by" column of the assignments/assignees that grant it. Every node keeps the copy-name and "Open in ..." navigation. The original single-assignment view is unchanged.
+
+What's new in 1.5.0
+-------------------
+
+*   **Copy + navigate from a Visualizer node**: the node details panel now has a copy icon that copies the node's name to the clipboard, and an "Open in ..." button that jumps to that element's own section - a role to Roles (with its cmdlets), the assignment to Role Assignments, a custom scope to Scopes, an assignee or scope member to User Rights, a cmdlet to Command Lookup.
+
+What's new in 1.4.0
+-------------------
+
+*   **New "My Cmdlets" section**: a dedicated view listing the cmdlets the connected account can run in the current Exchange Online session (resolved from the session's role-scoped module), each with its specific parameters (the 15 PowerShell common parameters are stripped out). The list is local to the session, so it loads instantly and live-filters as you type - by cmdlet name or by parameter. Includes Refresh and Export CSV; click a row to see the full parameter list in the details panel.
+
+What's new in 1.3.0
+-------------------
+
+*   **Click a node to inspect it**: every Visualizer node (assignment hub, Role / Assignee / Scope spokes, cmdlets and scope members) is now clickable and opens the slide-out details panel with information tailored to its type - the assignment's role/assignee/scopes/enabled state, the role's cmdlet count and per-group breakdown, a cmdlet's full name and verb group, or a member's type / primary SMTP / OU. Dragging a node still works; a press without a drag is treated as a click.
+
+What's new in 1.2.0
+-------------------
+
+*   **Visualize from any RBAC object**: the `Visualize` action is now available on Roles, Role Groups and Scopes - not just Role Assignments. Because one role / role group / scope can back several assignments, it resolves the related assignments and either jumps straight to the graph (single match) or opens a pre-filtered picker (several matches).
+*   **Resolved scope names in the Visualizer**: the *Scope* node shows the custom scope's real name instead of the bare `CustomRecipientScope` type. The name is resolved from the assignment, then by re-querying it by identity, then via a reverse map (`Get-ManagementRoleAssignment -CustomRecipientWriteScope`) so even auto-managed assignments that never surface the name are covered.
+*   **Scope members on the canvas**: a `Scope members` button resolves the write scope's recipients (same engine as *Preview members*) and fans them out around the *Scope* node, with a matching legend entry.
+*   **Interactive HTML export**: export the current Visualizer graph to a single self-contained HTML file (SVG + vanilla JS, no dependencies, works offline) with pan / zoom, node drag, hover highlight, a details panel and a legend.
+*   **Activity log drawer**: a collapsible log at the bottom of the window records every status message (timestamped, severity-tagged), auto-opens on the first error, and can be cleared or exported to a `.log` file. Each session is also mirrored to a file in `%TEMP%`.
+*   **Sortable "Pick assignment" picker**: click a column header to sort the assignment picker (toggle ascending / descending); composes with the search box.
+*   **Delete actions report real failures**: write/delete actions that Exchange rejects (for example deleting a scope still referenced by an assignment) now surface the actual Exchange error instead of a false "deleted" success.
+
+What's new in 1.0.0
+-------------------
+
+*   **Edit role assignments**: new compact dialog focused on the write scope. Pick one of four modes - Keep current / Predefined (`RecipientRelativeWriteScope` enum) / Custom recipient scope (loaded dynamically from the tenant's existing scopes) / OU distinguished name / Clear - plus an Enabled toggle. Read scope stays read-only with an explanation that it is inherited from the parent Role and not editable at assignment level in Exchange Online.
+*   **Visualizer grouped by verb**: cmdlets granted by the selected role are now sorted and colour-coded by verb group (Read / Modify / Destructive / Create / Other), with a legend in the corner of the canvas and per-cmdlet tooltips showing the group. Nodes are draggable and the canvas now auto-grows so a node dragged off-screen remains accessible via the scrollbars.
+*   **Scope "Used by" panel**: clicking a scope in the Scopes view lists every assignment that references it in the details panel.
+*   **Built-in vs Custom classification fixed across the board**: Roles now classify built-in vs custom from `IsRootRole` / `IsEndUserRole` / parent-of-others (the My* roles were previously mis-flagged Custom). Scopes carry an `Origin` badge driven by the `Default` property.
+*   **Sturdier Scopes pipeline**: `Get-ManagementScope` multi-valued filters are now rejoined with `-or` instead of being concatenated by spaces (which produced invalid OPATH on preview). The Scopes view also recovers gracefully if EXO returns one bad scope - it logs a warning and keeps the rest.
+*   **Auth UX**: WAM is now off by default (one click on the *i* icon next to the checkbox explains what WAM is). A loading overlay covers the window during browser sign-in. The `SynchronizationContext` is temporarily cleared around the call to work around a deadlock between MSAL.NET and the WPF dispatcher that left the GUI frozen after the browser had returned.
+*   **Lazy data loading**: connecting no longer auto-loads Role Groups. The status bar invites you to pick a section in the sidebar, with an indeterminate progress overlay during each fetch.
+*   **Audit Log section temporarily gated** behind a "coming soon" notice while the implementation is finalised.
+*   **Status bar revamped**: taller, Segoe UI 14 SemiBold, wraps long messages, colour-coded per severity (error in red, warn in amber, ok in default, info in Fluent blue).
+*   **Floating contextual action bar restyled** to a light Fluent pill with a coloured outline, anchored to the data column only (no longer overlaps the details panel when it slides out).
+*   **README revamped**: badges, dedicated "headline feature" section for the Visualizer, expanded section-by-section walkthrough.
 
 ---
 
